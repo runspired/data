@@ -44,6 +44,35 @@ function retrieveFromCurrentState(key) {
 }
 
 var guid = 0;
+
+// this (and all heimdall instrumentation) will be stripped by a babel transform
+//  https://github.com/heimdalljs/babel5-plugin-strip-heimdall
+const {
+  new_InternalModel,
+  materializeRecord,
+  setupData,
+  createSnapshot,
+  flushChangedAttributes,
+  hasChangedAttributes,
+  updateChangedAttributes,
+  changedAttributes,
+  send,
+  transitionTo,
+  _triggerDeferredTriggers
+} = heimdall.registerMonitor('InternalModel',
+  'new_InternalModel',
+  'materializeRecord',
+  'setupData',
+  'createSnapshot',
+  'flushChangedAttributes',
+  'hasChangedAttributes',
+  'updateChangedAttributes',
+  'changedAttributes',
+  'send',
+  'transitionTo',
+  '_triggerDeferredTriggers'
+);
+
 /*
   `InternalModel` is the Model class that we use internally inside Ember Data to represent models.
   Internal ED methods should only deal with `InternalModel` objects. It is a fast, plain Javascript class.
@@ -62,6 +91,7 @@ var guid = 0;
 */
 
 export default function InternalModel(type, id, store, _, data) {
+  heimdall.increment(new_InternalModel);
   this.type = type;
   this.id = id;
   this.store = store;
@@ -125,6 +155,7 @@ InternalModel.prototype = {
 
   constructor: InternalModel,
   materializeRecord() {
+    heimdall.increment(materializeRecord);
     assert("Materialized " + this.modelName + " record with id:" + this.id + "more than once", this.record === null || this.record === undefined);
 
     // lookupFactory should really return an object that creates
@@ -222,6 +253,7 @@ InternalModel.prototype = {
   },
 
   setupData(data) {
+    heimdall.increment(setupData);
     var changedKeys = this._changedKeys(data.attributes);
     assign(this._data, data.attributes);
     this.pushedData();
@@ -253,6 +285,7 @@ InternalModel.prototype = {
     @private
   */
   createSnapshot(options) {
+    heimdall.increment(createSnapshot);
     return new Snapshot(this, options);
   },
 
@@ -291,11 +324,13 @@ InternalModel.prototype = {
   },
 
   flushChangedAttributes() {
+    heimdall.increment(flushChangedAttributes);
     this._inFlightAttributes = this._attributes;
     this._attributes = new EmptyObject();
   },
 
   hasChangedAttributes() {
+    heimdall.increment(hasChangedAttributes);
     return Object.keys(this._attributes).length > 0;
   },
 
@@ -310,6 +345,7 @@ InternalModel.prototype = {
     @private
    */
   updateChangedAttributes() {
+    heimdall.increment(updateChangedAttributes);
     var changedAttributes = this.changedAttributes();
     var changedAttributeNames = Object.keys(changedAttributes);
 
@@ -331,6 +367,7 @@ InternalModel.prototype = {
     @private
   */
   changedAttributes() {
+    heimdall.increment(changedAttributes);
     var oldData = this._data;
     var currentData = this._attributes;
     var inFlightData = this._inFlightAttributes;
@@ -371,6 +408,7 @@ InternalModel.prototype = {
     @param {Object} context
   */
   send(name, context) {
+    heimdall.increment(send);
     var currentState = get(this, 'currentState');
 
     if (!currentState[name]) {
@@ -442,6 +480,7 @@ InternalModel.prototype = {
     @param {String} name
   */
   transitionTo(name) {
+    heimdall.increment(transitionTo);
     // POSSIBLE TODO: Remove this code and replace with
     // always having direct reference to state objects
 
@@ -510,6 +549,7 @@ InternalModel.prototype = {
   },
 
   _triggerDeferredTriggers() {
+    heimdall.increment(_triggerDeferredTriggers);
     //TODO: Before 1.0 we want to remove all the events that happen on the pre materialized record,
     //but for now, we queue up all the events triggered before the record was materialized, and flush
     //them once we have the record
