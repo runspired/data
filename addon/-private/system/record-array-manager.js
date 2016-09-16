@@ -15,6 +15,7 @@ var get = Ember.get;
 const {
   create,
   recordDidChange,
+  recordDidChange_scheduleUpdate,
   recordArraysForRecord,
   updateRecordArrays,
   _recordWasDeleted,
@@ -35,6 +36,7 @@ const {
 } = heimdall.registerMonitor('recordArrayManager',
   'create',
   'recordDidChange',
+  'recordDidChange_scheduleUpdate',
   'recordArraysForRecord',
   'updateRecordArrays',
   '_recordWasDeleted',
@@ -80,7 +82,7 @@ export default Ember.Object.extend({
   recordDidChange(record) {
     heimdall.increment(recordDidChange);
     if (this.changedRecords.push(record) !== 1) { return; }
-
+    heimdall.increment(recordDidChange_scheduleUpdate);
     Ember.run.schedule('actions', this, this.updateRecordArrays);
   },
 
