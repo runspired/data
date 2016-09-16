@@ -16,11 +16,22 @@ import {
   HasManyReference
 } from "ember-data/-private/system/references";
 
-var Promise = Ember.RSVP.Promise;
-var get = Ember.get;
-var set = Ember.set;
-var copy = Ember.copy;
-var assign = Ember.assign || Ember.merge;
+const {
+  get,
+  GUID_KEY,
+  set,
+  copy,
+  Error: EmberError,
+  inspect,
+  isEmpty,
+  isEqual,
+  run: emberRun,
+  RSVP,
+  RSVP: { Promise }
+} = Ember;
+
+const assign = Ember.assign || Ember.merge;
+const setOwner = Ember.setOwner;
 
 var _extractPivotNameCache = new EmptyObject();
 var _splitOnDotCache = new EmptyObject();
@@ -89,60 +100,128 @@ const {
   @private
   @class InternalModel
 */
+export default class InternalModel {
+  constructor(type, id, store, _, data) {
+    heimdall.increment(new_InternalModel);
+    this.type = type;
+    this.id = id;
+    this.store = store;
+    this._data = data || new EmptyObject();
+    this.modelName = type.modelName;
+    this.dataHasInitialized = false;
+    this._recordArrays = undefined;
+    this.currentState = RootState.empty;
+    this.isReloading = false;
+    this.isError = false;
+    this.error = null;
 
-export default function InternalModel(type, id, store, _, data) {
-  heimdall.increment(new_InternalModel);
-  this.type = type;
-  this.id = id;
-  this.store = store;
-  this._data = data || new EmptyObject();
-  this.modelName = type.modelName;
-  this.dataHasInitialized = false;
-  //Look into making this lazy
-  this._deferredTriggers = [];
-  this._attributes = new EmptyObject();
-  this._inFlightAttributes = new EmptyObject();
-  this._relationships = new Relationships(this);
-  this._recordArrays = undefined;
-  this.currentState = RootState.empty;
-  this.recordReference = new RecordReference(store, this);
-  this.references = {};
-  this.isReloading = false;
-  this.isError = false;
-  this.error = null;
-  this.__ember_meta__ = null;
-  this[Ember.GUID_KEY] = guid++ + 'internal-model';
+    // these are here to prevent shape change later when Ember lookups add them
+    this.__ember_meta__ = null;
+    this[GUID_KEY] = guid++ + 'internal-model';
+
+    // caches for lazy getters
+    this.__deferredTriggers = null;
+    this._references = null;
+    this._recordReference = null;
+    this.__inFlightAttributes = null;
+    this.__relationships = null;
+    this.__attributes = null;
+    this.__implicitRelationships = null;
+  }
+
   /*
-    implicit relationships are relationship which have not been declared but the inverse side exists on
-    another record somewhere
-    For example if there was
+    TODO @runspired FIX the reference should be the internalModel
+    itself, this both would save a few allocations and eliminate a redundant
+     layer and a bug that we are currently encountering in which it
+    is possible to have multiple copies of both a model and an InternalModel.
+   */
+  get recordReference() {
+    if (this._recordReference === null) {
+      this._recordReference = new RecordReference(this.store, this)
+    }
+    return this._recordReference;
+  }
 
-    ```app/models/comment.js
-    import DS from 'ember-data';
+  get references() {
+    if (this._references === null) {
+      this._references = new EmptyObject();
+    }
+    return this._references;
+  }
 
-    export default DS.Model.extend({
-      name: DS.attr()
-    })
-    ```
+  get _deferredTriggers() {
+    if (this.__deferredTriggers === null) {
+      this.__deferredTriggers = [];
+    }
+    return this.__deferredTriggers;
+  }
 
-    but there is also
+  get _attributes() {
+    if (this.__attributes === null) {
+      this.__attributes = new EmptyObject();
+    }
+    return this.__attributes;
+  }
 
-    ```app/models/post.js
-    import DS from 'ember-data';
+  set _attributes(v) {
+    this.__attributes = v;
+  }
 
-    export default DS.Model.extend({
-      name: DS.attr(),
-      comments: DS.hasMany('comment')
-    })
-    ```
+  get _relationships() {
+    if (this.__relationships === null) {
+      this.__relationships = new Relationships(this);
+    }
 
-    would have a implicit post relationship in order to be do things like remove ourselves from the post
-    when we are deleted
+    return this.__relationships;
+  }
+
+  get _inFlightAttributes() {
+    if (this.__inFlightAttributes === null) {
+      this.__inFlightAttributes = new EmptyObject();
+    }
+    return this.__inFlightAttributes;
+  }
+
+  set _inFlightAttributes(v) {
+    this.__inFlightAttributes = v;
+  }
+
+  /*
+   implicit relationships are relationship which have not been declared but the inverse side exists on
+   another record somewhere
+   For example if there was
+
+   ```app/models/comment.js
+   import DS from 'ember-data';
+
+   export default DS.Model.extend({
+   name: DS.attr()
+   })
+   ```
+
+   but there is also
+
+   ```app/models/post.js
+   import DS from 'ember-data';
+
+   export default DS.Model.extend({
+   name: DS.attr(),
+   comments: DS.hasMany('comment')
+   })
+   ```
+
+   would have a implicit post relationship in order to be do things like remove ourselves from the post
+   when we are deleted
   */
-  this._implicitRelationships = new EmptyObject();
+  get _implicitRelationships() {
+    if (this.__implicitRelationships === null) {
+      this.__implicitRelationships = new EmptyObject();
+    }
+    return this.__implicitRelationships;
+  }
 }
 
-InternalModel.prototype = {
+assign(InternalModel.prototype, {
   isEmpty: retrieveFromCurrentState('isEmpty'),
   isLoading: retrieveFromCurrentState('isLoading'),
   isLoaded: retrieveFromCurrentState('isLoaded'),
@@ -169,9 +248,9 @@ InternalModel.prototype = {
       adapterError: this.error
     };
 
-    if (Ember.setOwner) {
-      // ensure that `Ember.getOwner(this)` works inside a model instance
-      Ember.setOwner(createOptions, getOwner(this.store));
+    if (setOwner) {
+      // ensure that `getOwner(this)` works inside a model instance
+      setOwner(createOptions, getOwner(this.store));
     } else {
       createOptions.container = this.store.container;
     }
@@ -191,7 +270,7 @@ InternalModel.prototype = {
 
   save(options) {
     var promiseLabel = "DS: Model#save " + this;
-    var resolver = Ember.RSVP.defer(promiseLabel);
+    var resolver = RSVP.defer(promiseLabel);
 
     this.store.scheduleSave(this, resolver, options);
     return resolver.promise;
@@ -264,7 +343,7 @@ InternalModel.prototype = {
   },
 
   becameReady() {
-    Ember.run.schedule('actions', this.store.recordArrayManager, this.store.recordArrayManager.recordWasLoaded, this);
+    emberRun.schedule('actions', this.store.recordArrayManager, this.store.recordArrayManager.recordWasLoaded, this);
   },
 
   didInitializeData() {
@@ -348,13 +427,14 @@ InternalModel.prototype = {
     heimdall.increment(updateChangedAttributes);
     var changedAttributes = this.changedAttributes();
     var changedAttributeNames = Object.keys(changedAttributes);
+    let attrs = this._attributes;
 
     for (let i = 0, length = changedAttributeNames.length; i < length; i++) {
       let attribute = changedAttributeNames[i];
       let [oldData, newData] = changedAttributes[attribute];
 
       if (oldData === newData) {
-        delete this._attributes[attribute];
+        delete attrs[attribute];
       }
     }
   },
@@ -528,10 +608,10 @@ InternalModel.prototype = {
     errorMessage    += state.stateName + ". ";
 
     if (context !== undefined) {
-      errorMessage  += "Called with " + Ember.inspect(context) + ".";
+      errorMessage  += "Called with " + inspect(context) + ".";
     }
 
-    throw new Ember.Error(errorMessage);
+    throw new EmberError(errorMessage);
   },
 
   triggerLater() {
@@ -545,7 +625,7 @@ InternalModel.prototype = {
     if (this._deferredTriggers.push(args) !== 1) {
       return;
     }
-    Ember.run.scheduleOnce('actions', this, '_triggerDeferredTriggers');
+    emberRun.scheduleOnce('actions', this, '_triggerDeferredTriggers');
   },
 
   _triggerDeferredTriggers() {
@@ -556,7 +636,7 @@ InternalModel.prototype = {
     if (!this.record) {
       return;
     }
-    for (var i=0, l= this._deferredTriggers.length; i<l; i++) {
+    for (var i = 0, l= this._deferredTriggers.length; i<l; i++) {
       this.record.trigger.apply(this.record, this._deferredTriggers[i]);
     }
 
@@ -728,7 +808,7 @@ InternalModel.prototype = {
     // quick hack (something like this could be pushed into run.once
     if (this._updatingRecordArraysLater) { return; }
     this._updatingRecordArraysLater = true;
-    Ember.run.schedule('actions', this, this.updateRecordArrays);
+    emberRun.schedule('actions', this, this.updateRecordArrays);
   },
 
   addErrorMessageToAttribute(attribute, message) {
@@ -750,7 +830,7 @@ InternalModel.prototype = {
     var record = this.getRecord();
     var errors = get(record, 'errors');
 
-    return !Ember.isEmpty(errors);
+    return !isEmpty(errors);
   },
 
   // FOR USE DURING COMMIT PROCESS
@@ -785,9 +865,10 @@ InternalModel.prototype = {
 
   _saveWasRejected() {
     var keys = Object.keys(this._inFlightAttributes);
+    var attrs = this._attributes;
     for (var i=0; i < keys.length; i++) {
-      if (this._attributes[keys[i]] === undefined) {
-        this._attributes[keys[i]] = this._inFlightAttributes[keys[i]];
+      if (attrs[keys[i]] === undefined) {
+        attrs[keys[i]] = this._inFlightAttributes[keys[i]];
       }
     }
     this._inFlightAttributes = new EmptyObject();
@@ -841,6 +922,7 @@ InternalModel.prototype = {
       var original, i, value, key;
       var keys = Object.keys(updates);
       var length = keys.length;
+      var attrs = this._attributes;
 
       original = assign(new EmptyObject(), this._data);
       original = assign(original, this._inFlightAttributes);
@@ -853,11 +935,11 @@ InternalModel.prototype = {
         // this attributes. We never override this value when merging
         // updates from the backend so we should not sent a change
         // notification if the server value differs from the original.
-        if (this._attributes[key] !== undefined) {
+        if (attrs[key] !== undefined) {
           continue;
         }
 
-        if (!Ember.isEqual(original[key], value)) {
+        if (!isEqual(original[key], value)) {
           changedKeys.push(key);
         }
       }
@@ -899,7 +981,7 @@ InternalModel.prototype = {
 
     return reference;
   }
-}
+});
 
 if (isEnabled('ds-reset-attribute')) {
   /*
