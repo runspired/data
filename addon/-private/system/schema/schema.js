@@ -1,3 +1,5 @@
+import EmptyObject from '../empty-object';
+
 export default class Schema {
   constructor(model, owner) {
     this.primaryKey = 'id';
