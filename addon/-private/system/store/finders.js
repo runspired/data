@@ -10,10 +10,6 @@ import {
   normalizeResponseHelper
 } from "ember-data/-private/system/store/serializer-response";
 
-import {
-  serializerForAdapter
-} from "ember-data/-private/system/store/serializers";
-
 var Promise = Ember.RSVP.Promise;
 
 function payloadIsNotBlank(adapterPayload) {
@@ -24,19 +20,19 @@ function payloadIsNotBlank(adapterPayload) {
   }
 }
 
-export function _find(adapter, store, typeClass, id, internalModel, options) {
+export function _find(adapter, store, schema, id, internalModel, options) {
   var snapshot = internalModel.createSnapshot(options);
-  var promise = adapter.findRecord(store, typeClass, id, snapshot);
-  var serializer = serializerForAdapter(store, adapter, internalModel.type.modelName);
-  var label = "DS: Handle Adapter#findRecord of " + typeClass + " with id: " + id;
+  var promise = adapter.findRecord(store, schema, id, snapshot);
+  var serializer = schema.serializer;
+  var label = "DS: Handle Adapter#findRecord of " + schema + " with id: " + id;
 
   promise = Promise.resolve(promise, label);
   promise = _guard(promise, _bind(_objectIsAlive, store));
 
   return promise.then(function(adapterPayload) {
-    assert("You made a `findRecord` request for a " + typeClass.modelName + " with id " + id + ", but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
+    assert("You made a `findRecord` request for a " + schema.modelName + " with id " + id + ", but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
     return store._adapterRun(function() {
-      var payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, id, 'findRecord');
+      var payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, id, 'findRecord');
       assert('Ember Data expected the primary data returned from a `findRecord` response to be an object but instead it found an array.', !Array.isArray(payload.data));
       //TODO Optimize
       var record = store.push(payload);
@@ -49,15 +45,15 @@ export function _find(adapter, store, typeClass, id, internalModel, options) {
     }
 
     throw error;
-  }, "DS: Extract payload of '" + typeClass + "'");
+  }, "DS: Extract payload of '" + schema.modelName + "'");
 }
 
 
-export function _findMany(adapter, store, typeClass, ids, internalModels) {
+export function _findMany(adapter, store, schema, ids, internalModels) {
   let snapshots = Ember.A(internalModels).invoke('createSnapshot');
-  let promise = adapter.findMany(store, typeClass, ids, snapshots);
-  let serializer = serializerForAdapter(store, adapter, typeClass.modelName);
-  let label = "DS: Handle Adapter#findMany of " + typeClass;
+  let promise = adapter.findMany(store, schema, ids, snapshots);
+  let serializer = schema.serializer;
+  let label = "DS: Handle Adapter#findMany of " + schema.modelName;
 
   if (promise === undefined) {
     throw new Error('adapter.findMany returned undefined, this was very likely a mistake');
@@ -67,9 +63,9 @@ export function _findMany(adapter, store, typeClass, ids, internalModels) {
   promise = _guard(promise, _bind(_objectIsAlive, store));
 
   return promise.then(function(adapterPayload) {
-    assert("You made a `findMany` request for " + typeClass.modelName + " records with ids " + ids + ", but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
+    assert("You made a `findMany` request for " + schema.modelName + " records with ids " + ids + ", but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
     return store._adapterRun(function() {
-      let payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'findMany');
+      let payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'findMany');
       //TODO Optimize, no need to materialize here
       let records = store.push(payload);
       let internalModels = new Array(records.length);
@@ -80,14 +76,14 @@ export function _findMany(adapter, store, typeClass, ids, internalModels) {
 
       return internalModels;
     });
-  }, null, "DS: Extract payload of " + typeClass);
+  }, null, "DS: Extract payload of " + schema.modelName);
 }
 
 export function _findHasMany(adapter, store, internalModel, link, relationship) {
   var snapshot = internalModel.createSnapshot();
-  var typeClass = store.modelFor(relationship.type);
+  var schema = store.schemaFor(relationship.type);
   var promise = adapter.findHasMany(store, snapshot, link, relationship);
-  var serializer = serializerForAdapter(store, adapter, relationship.type);
+  var serializer = schema.serializer;
   var label = "DS: Handle Adapter#findHasMany of " + internalModel + " : " + relationship.type;
 
   promise = Promise.resolve(promise, label);
@@ -97,7 +93,7 @@ export function _findHasMany(adapter, store, internalModel, link, relationship) 
   return promise.then(function(adapterPayload) {
     assert("You made a `findHasMany` request for a " + internalModel.modelName + "'s `" + relationship.key + "` relationship, using link " + link + ", but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
     return store._adapterRun(function() {
-      var payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'findHasMany');
+      var payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'findHasMany');
       //TODO Use a non record creating push
       var records = store.push(payload);
       var recordArray = records.map((record) => record._internalModel);
@@ -109,9 +105,9 @@ export function _findHasMany(adapter, store, internalModel, link, relationship) 
 
 export function _findBelongsTo(adapter, store, internalModel, link, relationship) {
   var snapshot = internalModel.createSnapshot();
-  var typeClass = store.modelFor(relationship.type);
+  var schema = store.schemaFor(relationship.type);
   var promise = adapter.findBelongsTo(store, snapshot, link, relationship);
-  var serializer = serializerForAdapter(store, adapter, relationship.type);
+  var serializer = schema.serializer;
   var label = "DS: Handle Adapter#findBelongsTo of " + internalModel + " : " + relationship.type;
 
   promise = Promise.resolve(promise, label);
@@ -120,7 +116,7 @@ export function _findBelongsTo(adapter, store, internalModel, link, relationship
 
   return promise.then(function(adapterPayload) {
     return store._adapterRun(function() {
-      var payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'findBelongsTo');
+      var payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'findBelongsTo');
 
       if (!payload.data) {
         return null;
@@ -133,36 +129,36 @@ export function _findBelongsTo(adapter, store, internalModel, link, relationship
   }, null, "DS: Extract payload of " + internalModel + " : " + relationship.type);
 }
 
-export function _findAll(adapter, store, typeClass, sinceToken, options) {
-  var modelName = typeClass.modelName;
+export function _findAll(adapter, store, schema, sinceToken, options) {
+  var modelName = schema.modelName;
   var recordArray = store.peekAll(modelName);
   var snapshotArray = recordArray.createSnapshot(options);
-  var promise = adapter.findAll(store, typeClass, sinceToken, snapshotArray);
-  var serializer = serializerForAdapter(store, adapter, modelName);
-  var label = "DS: Handle Adapter#findAll of " + typeClass;
+  var promise = adapter.findAll(store, schema, sinceToken, snapshotArray);
+  var serializer = schema.serializer;
+  var label = "DS: Handle Adapter#findAll of " + modelName;
 
   promise = Promise.resolve(promise, label);
   promise = _guard(promise, _bind(_objectIsAlive, store));
 
   return promise.then(function(adapterPayload) {
-    assert("You made a `findAll` request for " + typeClass.modelName + " records, but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
+    assert("You made a `findAll` request for " + modelName + " records, but the adapter's response did not have any data", payloadIsNotBlank(adapterPayload));
     store._adapterRun(function() {
-      var payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'findAll');
+      var payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'findAll');
       //TODO Optimize
       store.push(payload);
     });
 
-    store.didUpdateAll(typeClass);
+    store.didUpdateAll(schema);
     return store.peekAll(modelName);
-  }, null, "DS: Extract payload of findAll " + typeClass);
+  }, null, "DS: Extract payload of findAll " + modelName);
 }
 
-export function _query(adapter, store, typeClass, query, recordArray) {
-  var modelName = typeClass.modelName;
-  var promise = adapter.query(store, typeClass, query, recordArray);
+export function _query(adapter, store, schema, query, recordArray) {
+  var modelName = schema.modelName;
+  var promise = adapter.query(store, schema, query, recordArray);
 
-  var serializer = serializerForAdapter(store, adapter, modelName);
-  var label = "DS: Handle Adapter#query of " + typeClass;
+  var serializer = schema.serializer;
+  var label = "DS: Handle Adapter#query of " + modelName;
 
   promise = Promise.resolve(promise, label);
   promise = _guard(promise, _bind(_objectIsAlive, store));
@@ -170,7 +166,7 @@ export function _query(adapter, store, typeClass, query, recordArray) {
   return promise.then(function(adapterPayload) {
     var records, payload;
     store._adapterRun(function() {
-      payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'query');
+      payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'query');
       //TODO Optimize
       records = store.push(payload);
     });
@@ -179,14 +175,14 @@ export function _query(adapter, store, typeClass, query, recordArray) {
     recordArray.loadRecords(records, payload);
 
     return recordArray;
-  }, null, "DS: Extract payload of query " + typeClass);
+  }, null, "DS: Extract payload of query " + modelName);
 }
 
-export function _queryRecord(adapter, store, typeClass, query) {
-  var modelName = typeClass.modelName;
-  var promise = adapter.queryRecord(store, typeClass, query);
-  var serializer = serializerForAdapter(store, adapter, modelName);
-  var label = "DS: Handle Adapter#queryRecord of " + typeClass;
+export function _queryRecord(adapter, store, schema, query) {
+  var modelName = schema.modelName;
+  var promise = adapter.queryRecord(store, schema, query);
+  var serializer = schema.serializer;
+  var label = "DS: Handle Adapter#queryRecord of " + modelName;
 
   promise = Promise.resolve(promise, label);
   promise = _guard(promise, _bind(_objectIsAlive, store));
@@ -194,7 +190,7 @@ export function _queryRecord(adapter, store, typeClass, query) {
   return promise.then(function(adapterPayload) {
     var record;
     store._adapterRun(function() {
-      var payload = normalizeResponseHelper(serializer, store, typeClass, adapterPayload, null, 'queryRecord');
+      var payload = normalizeResponseHelper(serializer, store, schema, adapterPayload, null, 'queryRecord');
 
       assert("Expected the primary data returned by the serializer for a `queryRecord` response to be a single object or null but instead it was an array.", !Array.isArray(payload.data), {
         id: 'ds.store.queryRecord-array-response'
@@ -206,5 +202,5 @@ export function _queryRecord(adapter, store, typeClass, query) {
 
     return record;
 
-  }, null, "DS: Extract payload of queryRecord " + typeClass);
+  }, null, "DS: Extract payload of queryRecord " + modelName);
 }

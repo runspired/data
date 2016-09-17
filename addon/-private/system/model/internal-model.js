@@ -101,13 +101,18 @@ const {
   @class InternalModel
 */
 export default class InternalModel {
-  constructor(type, id, store, _, data) {
+  constructor(schema, id, store, _, data) {
     heimdall.increment(new_InternalModel);
-    this.type = type;
     this.id = id;
-    this.store = store;
     this._data = data || new EmptyObject();
-    this.modelName = type.modelName;
+    this.schema = schema;
+
+    // TODO deprecate, store does not belong being referenced here
+    this.store = store;
+
+    // TODO this is all on the schema, so deprecate it being here
+    this.modelClass = schema.modelClass;
+    this.modelName = schema.modelName;
     this.dataHasInitialized = false;
     this._recordArrays = undefined;
     this.currentState = RootState.empty;
@@ -127,6 +132,11 @@ export default class InternalModel {
     this.__relationships = null;
     this.__attributes = null;
     this.__implicitRelationships = null;
+  }
+
+  get type() {
+    // TODO @runspired FIX accessing InternalModel.type should throw a deprecation
+    return this.modelClass;
   }
 
   /*
@@ -255,7 +265,7 @@ assign(InternalModel.prototype, {
       createOptions.container = this.store.container;
     }
 
-    this.record = this.type._create(createOptions);
+    this.record = this.modelClass._create(createOptions);
 
     this._triggerDeferredTriggers();
   },
@@ -320,15 +330,15 @@ assign(InternalModel.prototype, {
   },
 
   eachRelationship(callback, binding) {
-    return this.type.eachRelationship(callback, binding);
+    return this.modelClass.eachRelationship(callback, binding);
   },
 
   eachAttribute(callback, binding) {
-    return this.type.eachAttribute(callback, binding);
+    return this.modelClass.eachAttribute(callback, binding);
   },
 
   inverseFor(key) {
-    return this.type.inverseFor(key);
+    return this.modelClass.inverseFor(key);
   },
 
   setupData(data) {
@@ -679,7 +689,7 @@ assign(InternalModel.prototype, {
     //TODO(Igor) consider the polymorphic case
     Object.keys(preload).forEach((key) => {
       var preloadValue = get(preload, key);
-      var relationshipMeta = this.type.metaForProperty(key);
+      var relationshipMeta = this.modelClass.metaForProperty(key);
       if (relationshipMeta.isRelationship) {
         this._preloadRelationship(key, preloadValue);
       } else {
@@ -689,7 +699,7 @@ assign(InternalModel.prototype, {
   },
 
   _preloadRelationship(key, preloadValue) {
-    var relationshipMeta = this.type.metaForProperty(key);
+    var relationshipMeta = this.modelClass.metaForProperty(key);
     var type = relationshipMeta.type;
     if (relationshipMeta.kind === 'hasMany') {
       this._preloadHasMany(key, preloadValue, type);
@@ -736,7 +746,7 @@ assign(InternalModel.prototype, {
   */
   updateRecordArrays() {
     this._updatingRecordArraysLater = false;
-    this.store.dataWasUpdated(this.type, this);
+    this.store.dataWasUpdated(this.modelClass, this);
   },
 
   setId(id) {

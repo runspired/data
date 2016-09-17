@@ -1,29 +1,32 @@
 import EmptyObject from '../empty-object';
 
 export default class Schema {
-  constructor(model, owner) {
+  constructor(modelClass, store) {
     this.primaryKey = 'id';
     this._attributes = null;
     this._relationships = null;
     this._expandedModel = false;
-    this.model = model;
-    this.modelName = model.modelName;
+    this.modelClass = modelClass;
+    this.modelName = modelClass.modelName;
     this._typeMap = null;
     this._adapter = null;
     this._serializer = null;
-    this.owner = owner;
+    this.store = store;
   }
 
   get adapter() {
     if (this._adapter === null) {
-      this._adapter = this.owner.lookup(`adapter:${this.modelName}`);
+      this._adapter = this.store.adapterFor(this.modelName);
     }
     return this._adapter;
   }
 
   get serializer() {
     if (this._serializer === null) {
-      this._serializer = this.owner.lookup(`serializer:${this.modelName}`);
+      this._serializer = this.store.serializerFor(this.modelName);
+    }
+    if (!this._serializer) {
+      throw new Error('Cant find serializer!');
     }
     return this._serializer;
   }
