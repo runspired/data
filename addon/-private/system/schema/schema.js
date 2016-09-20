@@ -60,6 +60,10 @@ export default class Schema {
     return this._typeMap;
   }
 
+  set typeMap(v) {
+    this._typeMap = v;
+  }
+
   _parseModel() {
     let model = this.model;
     let keys = Object.keys(model);

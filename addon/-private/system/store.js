@@ -5,7 +5,7 @@
 import Ember from 'ember';
 import Schema from './schema/schema';
 import Model from 'ember-data/model';
-import { assert, warn, runInDebug } from 'ember-data/-private/debug';
+import { instrument, assert, warn, runInDebug } from 'ember-data/-private/debug';
 import _normalizeLink from 'ember-data/-private/system/normalize-link';
 import normalizeModelName from 'ember-data/-private/system/normalize-model-name';
 import { InvalidError } from 'ember-data/adapters/errors';
@@ -198,6 +198,7 @@ const Store = Service.extend({
     this._backburner = new Backburner(['normalizeRelationships', 'syncRelationships', 'finished']);
 
     // internal bookkeeping; not observable
+    this._schemas = null;
     this.recordArrayManager = RecordArrayManager.create({
       store: this
     });
@@ -617,8 +618,7 @@ const Store = Service.extend({
     }
 
     var snapshot = internalModel.createSnapshot(options);
-    var modelClass = internalModel.modelClass;
-    var adapter = this.adapterFor(modelClass.modelName);
+    var adapter = internalModel.schema.adapter;
 
     // Refetch the record if the adapter thinks the record is stale
     if (adapter.shouldReloadRecord(this, snapshot)) {
@@ -697,15 +697,14 @@ const Store = Service.extend({
    */
   // TODO rename this to have an underscore
   fetchRecord(internalModel, options) {
-    var modelClass = internalModel.modelClass;
+    var schema = internalModel.schema;
     var id = internalModel.id;
-    var adapter = this.adapterFor(modelClass.modelName);
+    var adapter = schema.adapter;
 
-    assert("You tried to find a record but you have no adapter (for " + modelClass + ")", adapter);
-    assert("You tried to find a record but your adapter (for " + modelClass + ") does not implement 'findRecord'", typeof adapter.findRecord === 'function' || typeof adapter.find === 'function');
+    assert("You tried to find a record but you have no adapter (for " + schema.modelName + ")", adapter);
+    assert("You tried to find a record but your adapter (for " + schema.modelName + ") does not implement 'findRecord'", typeof adapter.findRecord === 'function' || typeof adapter.find === 'function');
 
-    var promise = _find(adapter, this, modelClass, id, internalModel, options);
-    return promise;
+    return _find(adapter, this, schema, id, internalModel, options);
   },
 
   scheduleFetchMany(records) {
@@ -723,11 +722,11 @@ const Store = Service.extend({
   },
 
   scheduleFetch(internalModel, options) {
-    var modelClass = internalModel.modelClass;
+    let schema = internalModel.schema;
 
     if (internalModel._loadingPromise) { return internalModel._loadingPromise; }
 
-    var resolver = RSVP.defer('Fetching ' + modelClass + 'with id: ' + internalModel.id);
+    var resolver = RSVP.defer('Fetching ' + schema.modelName + 'with id: ' + internalModel.id);
     var pendingFetchItem = {
       record: internalModel,
       resolver: resolver,
@@ -737,10 +736,10 @@ const Store = Service.extend({
 
     internalModel.loadingData(promise);
 
-    if (!this._pendingFetch.get(modelClass)) {
-      this._pendingFetch.set(modelClass, [pendingFetchItem]);
+    if (!this._pendingFetch.get(schema)) {
+      this._pendingFetch.set(schema, [pendingFetchItem]);
     } else {
-      this._pendingFetch.get(modelClass).push(pendingFetchItem);
+      this._pendingFetch.get(schema).push(pendingFetchItem);
     }
     emberRun.scheduleOnce('afterRender', this, this.flushAllPendingFetches);
 
@@ -756,9 +755,9 @@ const Store = Service.extend({
     this._pendingFetch = Map.create();
   },
 
-  _flushPendingFetchForType(pendingFetchItems, modelClass) {
+  _flushPendingFetchForType(pendingFetchItems, schema) {
     var store = this;
-    var adapter = store.adapterFor(modelClass.modelName);
+    var adapter = schema.adapter;
     var shouldCoalesce = !!adapter.findMany && adapter.coalesceFindRequests;
     var records = new A(pendingFetchItems).mapBy('record');
 
@@ -828,7 +827,7 @@ const Store = Service.extend({
         var requestedRecords = new A(groupOfRecords);
         var ids = requestedRecords.mapBy('id');
         if (ids.length > 1) {
-          _findMany(adapter, store, modelClass, ids, requestedRecords).
+          _findMany(adapter, store, schema, ids, requestedRecords).
             then(resolveFoundRecords).
             then(makeMissingRecordsRejector(requestedRecords)).
             then(null, makeRecordsRejector(requestedRecords));
@@ -1042,7 +1041,7 @@ const Store = Service.extend({
     @return {Promise} promise
   */
   findBelongsTo(owner, link, relationship) {
-    var adapter = this.adapterFor(owner.type.modelName);
+    var adapter = this.adapterFor(owner.modelName);
 
     assert("You tried to load a belongsTo relationship but you have no adapter (for " + owner.type + ")", adapter);
     assert("You tried to load a belongsTo relationship from a specified `link` in the original payload but your adapter does not implement `findBelongsTo`", typeof adapter.findBelongsTo === 'function');
@@ -1108,16 +1107,16 @@ const Store = Service.extend({
     assert("You need to pass a model name to the store's query method", isPresent(modelName));
     assert("You need to pass a query hash to the store's query method", query);
     assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ inspect(modelName), typeof modelName === 'string');
-    var modelClass = this.modelFor(modelName);
+    var schema = this.schemaFor(modelName);
     array = array || this.recordArrayManager
-      .createAdapterPopulatedRecordArray(modelClass, query);
+      .createAdapterPopulatedRecordArray(schema, query);
 
-    var adapter = this.adapterFor(modelName);
+    var adapter = schema.adapter;
 
-    assert("You tried to load a query but you have no adapter (for " + modelClass + ")", adapter);
+    assert("You tried to load a query but you have no adapter (for " + modelName + ")", adapter);
     assert("You tried to load a query but your adapter does not implement `query`", typeof adapter.query === 'function');
 
-    let pA = promiseArray(_query(adapter, this, modelClass, query, array));
+    let pA = promiseArray(_query(adapter, this, schema, query, array));
     instrument(() => {
       pA.finally(() => { heimdall.stop(token); });
     });
@@ -1222,13 +1221,13 @@ const Store = Service.extend({
     assert("You need to pass a query hash to the store's queryRecord method", query);
     assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ inspect(modelName), typeof modelName === 'string');
 
-    var modelClass = this.modelFor(modelName);
-    var adapter = this.adapterFor(modelName);
+    let schema = this.schemaFor(modelName);
+    let adapter = schema.adapter;
 
-    assert("You tried to make a query but you have no adapter (for " + modelClass + ")", adapter);
+    assert("You tried to make a query but you have no adapter (for " + modelName + ")", adapter);
     assert("You tried to make a query but your adapter does not implement `queryRecord`", typeof adapter.queryRecord === 'function');
 
-    return promiseObject(_queryRecord(adapter, this, modelClass, query));
+    return promiseObject(_queryRecord(adapter, this, schema, query));
   },
 
   /**
@@ -1396,7 +1395,7 @@ const Store = Service.extend({
   /**
     @method _fetchAll
     @private
-    @param {DS.Model} modelClass
+    @param {Schema} schema
     @param {DS.RecordArray} array
     @return {Promise} promise
   */
@@ -1433,12 +1432,12 @@ const Store = Service.extend({
 
   /**
     @method didUpdateAll
-    @param {DS.Model} modelClass
+    @param {Schema} schema
     @private
   */
-  didUpdateAll(modelClass) {
+  didUpdateAll(schema) {
     heimdall.increment(didUpdateAll);
-    var liveRecordArray = this.recordArrayManager.liveRecordArrayFor(modelClass);
+    var liveRecordArray = this.recordArrayManager.liveRecordArrayFor(schema);
     set(liveRecordArray, 'isUpdating', false);
   },
 
@@ -1470,10 +1469,10 @@ const Store = Service.extend({
     heimdall.increment(peekAll);
     assert("You need to pass a model name to the store's peekAll method", isPresent(modelName));
     assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ inspect(modelName), typeof modelName === 'string');
-    var modelClass = this.modelFor(modelName);
+    let schema = this.schemaFor(modelName);
 
-    var liveRecordArray = this.recordArrayManager.liveRecordArrayFor(modelClass);
-    this.recordArrayManager.populateLiveRecordArray(liveRecordArray, modelClass);
+    var liveRecordArray = this.recordArrayManager.liveRecordArrayFor(schema);
+    this.recordArrayManager.populateLiveRecordArray(liveRecordArray, schema);
 
     return liveRecordArray;
   },
@@ -1493,11 +1492,14 @@ const Store = Service.extend({
   */
   unloadAll(modelName) {
     assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ inspect(modelName), !modelName || typeof modelName === 'string');
+    if (this._schemas === null) {
+      return;
+    }
     if (arguments.length === 0) {
-      let keys = Object.keys(this.schemas);
+      let keys = Object.keys(this._schemas);
       keys.forEach(this.unloadAll, this);
     } else {
-      let schema = this.schemas[modelName];
+      let schema = this._schemas[modelName];
 
       if (schema) {
         let typeMap = schema.typeMap;
@@ -1510,7 +1512,8 @@ const Store = Service.extend({
           record.destroy(); // maybe within unloadRecord
         }
 
-        typeMap.metadata = new EmptyObject();
+        typeMap.metadata = null;
+        schema.typeMap = null;
       }
     }
   },
@@ -1589,12 +1592,12 @@ const Store = Service.extend({
       filter = query;
     }
 
-    modelName = this.modelFor(modelName);
+    let schema = this.schemaFor(modelName);
 
     if (hasQuery) {
-      array = this.recordArrayManager.createFilteredRecordArray(modelName, filter, query);
+      array = this.recordArrayManager.createFilteredRecordArray(schema, filter, query);
     } else {
-      array = this.recordArrayManager.createFilteredRecordArray(modelName, filter);
+      array = this.recordArrayManager.createFilteredRecordArray(schema, filter);
     }
 
     promise = promise || Promise.resolve(array);
@@ -1674,15 +1677,15 @@ const Store = Service.extend({
   },
 
   schemaFor(modelName) {
-    if (!this.schemas) {
-      this.schemas = new EmptyObject();
+    if (this._schemas === null) {
+      this._schemas = new EmptyObject();
     }
-    if (!this.schemas[modelName]) {
+    if (!this._schemas[modelName]) {
       let modelClass = this.modelFor(modelName);
-      this.schemas[modelName] = new Schema(modelClass, this);
+      this._schemas[modelName] = new Schema(modelClass, this);
     }
 
-    return this.schemas[modelName];
+    return this._schemas[modelName];
   },
 
   /**
@@ -1804,12 +1807,12 @@ const Store = Service.extend({
   */
   typeMapFor(modelClass) {
     heimdall.increment(typeMapFor);
-    deprecate(`Store.typeMapFor has been deprecated. Use Store.schemaFor(modelClass).typeMap instead.`, false, {
+    deprecate(`Store.typeMapFor has been deprecated. Use Store.schemaFor(modelName).typeMap instead.`, false, {
       since: '2.10.0',
       id: 'data.public.typeMapFor'
     });
 
-    return this.schemaFor(modelClass).typeMap;
+    return this.schemaFor(modelClass.modelName).typeMap;
   },
 
   // ................
@@ -2115,20 +2118,20 @@ const Store = Service.extend({
       // contains unknown attributes or relationships, log a warning.
 
       if (ENV.DS_WARN_ON_UNKNOWN_KEYS) {
-        let modelClass = this.modelFor(modelName);
+        let schema = this.schemaFor(modelName);
 
         // Check unknown attributes
         let unknownAttributes = Object.keys(data.attributes || {}).filter((key) => {
-          return !get(modelClass, 'fields').has(key);
+          return !get(schema.modelClass, 'fields').has(key);
         });
-        let unknownAttributesMessage = `The payload for '${modelClass.modelName}' contains these unknown attributes: ${unknownAttributes}. Make sure they've been defined in your model.`;
+        let unknownAttributesMessage = `The payload for '${modelName}' contains these unknown attributes: ${unknownAttributes}. Make sure they've been defined in your model.`;
         warn(unknownAttributesMessage, unknownAttributes.length === 0, { id: 'ds.store.unknown-keys-in-payload' });
 
         // Check unknown relationships
         let unknownRelationships = Object.keys(data.relationships || {}).filter((key) => {
-          return !get(modelClass, 'fields').has(key);
+          return !get(schema.modelClass, 'fields').has(key);
         });
-        let unknownRelationshipsMessage = `The payload for '${modelClass.modelName}' contains these unknown relationships: ${unknownRelationships}. Make sure they've been defined in your model.`;
+        let unknownRelationshipsMessage = `The payload for '${modelName}' contains these unknown relationships: ${unknownRelationships}. Make sure they've been defined in your model.`;
         warn(unknownRelationshipsMessage, unknownRelationships.length === 0, { id: 'ds.store.unknown-keys-in-payload' });
       }
     });
@@ -2248,9 +2251,8 @@ const Store = Service.extend({
     heimdall.increment(normalize);
     assert("You need to pass a model name to the store's normalize method", isPresent(modelName));
     assert(`Passing classes to store methods has been removed. Please pass a dasherized string instead of ${inspect(modelName)}`, typeof modelName === 'string');
-    var serializer = this.serializerFor(modelName);
-    var modelClass = this.modelFor(modelName);
-    return serializer.normalize(modelClass, payload);
+    let schema = this.schemaFor(modelName);
+    return schema.serializer.normalize(schema.modelClass, payload);
   },
 
   /**
@@ -2387,8 +2389,7 @@ const Store = Service.extend({
       '-default'
     ];
 
-    var serializer = this.lookupSerializer(modelName, fallbacks);
-    return serializer;
+    return this.lookupSerializer(modelName, fallbacks);
   },
 
   /**
@@ -2475,7 +2476,7 @@ function _commit(adapter, store, operation, snapshot) {
   var internalModel = snapshot._internalModel;
   var modelName = snapshot.modelName;
   let schema = store.schemaFor(modelName);
-  var modelClass = store.modelClass;
+  var modelClass = schema.modelClass;
   var promise = adapter[operation](store, modelClass, snapshot);
   var serializer = schema.serializer;
   var label = `DS: Extract and notify about ${operation} completion of ${internalModel}`;

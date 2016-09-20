@@ -22,7 +22,7 @@ function payloadIsNotBlank(adapterPayload) {
 
 export function _find(adapter, store, schema, id, internalModel, options) {
   var snapshot = internalModel.createSnapshot(options);
-  var promise = adapter.findRecord(store, schema, id, snapshot);
+  var promise = adapter.findRecord(store, schema.modelClass, id, snapshot);
   var serializer = schema.serializer;
   var label = "DS: Handle Adapter#findRecord of " + schema + " with id: " + id;
 
@@ -51,7 +51,7 @@ export function _find(adapter, store, schema, id, internalModel, options) {
 
 export function _findMany(adapter, store, schema, ids, internalModels) {
   let snapshots = Ember.A(internalModels).invoke('createSnapshot');
-  let promise = adapter.findMany(store, schema, ids, snapshots);
+  let promise = adapter.findMany(store, schema.modelClass, ids, snapshots);
   let serializer = schema.serializer;
   let label = "DS: Handle Adapter#findMany of " + schema.modelName;
 
@@ -133,7 +133,7 @@ export function _findAll(adapter, store, schema, sinceToken, options) {
   var modelName = schema.modelName;
   var recordArray = store.peekAll(modelName);
   var snapshotArray = recordArray.createSnapshot(options);
-  var promise = adapter.findAll(store, schema, sinceToken, snapshotArray);
+  var promise = adapter.findAll(store, schema.modelClass, sinceToken, snapshotArray);
   var serializer = schema.serializer;
   var label = "DS: Handle Adapter#findAll of " + modelName;
 
@@ -155,7 +155,7 @@ export function _findAll(adapter, store, schema, sinceToken, options) {
 
 export function _query(adapter, store, schema, query, recordArray) {
   var modelName = schema.modelName;
-  var promise = adapter.query(store, schema, query, recordArray);
+  var promise = adapter.query(store, schema.modelClass, query, recordArray);
 
   var serializer = schema.serializer;
   var label = "DS: Handle Adapter#query of " + modelName;
@@ -180,7 +180,7 @@ export function _query(adapter, store, schema, query, recordArray) {
 
 export function _queryRecord(adapter, store, schema, query) {
   var modelName = schema.modelName;
-  var promise = adapter.queryRecord(store, schema, query);
+  var promise = adapter.queryRecord(store, schema.modelClass, query);
   var serializer = schema.serializer;
   var label = "DS: Handle Adapter#queryRecord of " + modelName;
 

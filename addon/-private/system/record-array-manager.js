@@ -70,8 +70,8 @@ export default Ember.Object.extend({
     });
 
     this.liveRecordArrays = MapWithDefault.create({
-      defaultValue: (typeClass) => {
-        return this.createRecordArray(typeClass);
+      defaultValue: (schema) => {
+        return this.createRecordArray(schema);
       }
     });
 
@@ -130,29 +130,29 @@ export default Ember.Object.extend({
 
   _recordWasChanged(record) {
     heimdall.increment(_recordWasChanged);
-    var typeClass = record.type;
-    var recordArrays = this.filteredRecordArrays.get(typeClass);
+    var schema = record.schema;
+    var recordArrays = this.filteredRecordArrays.get(schema);
     var filter;
     recordArrays.forEach((array) => {
       filter = get(array, 'filterFunction');
-      this.updateFilterRecordArray(array, filter, typeClass, record);
+      this.updateFilterRecordArray(array, filter, schema, record);
     });
   },
 
   //Need to update live arrays on loading
   recordWasLoaded(record) {
     heimdall.increment(recordWasLoaded);
-    var typeClass = record.type;
-    var recordArrays = this.filteredRecordArrays.get(typeClass);
+    var schema = record.schema;
+    var recordArrays = this.filteredRecordArrays.get(schema);
     var filter;
 
     recordArrays.forEach((array) => {
       filter = get(array, 'filterFunction');
-      this.updateFilterRecordArray(array, filter, typeClass, record);
+      this.updateFilterRecordArray(array, filter, schema, record);
     });
 
-    if (this.liveRecordArrays.has(typeClass)) {
-      var liveRecordArray = this.liveRecordArrays.get(typeClass);
+    if (this.liveRecordArrays.has(schema)) {
+      var liveRecordArray = this.liveRecordArrays.get(schema);
       this._addRecordToRecordArray(liveRecordArray, record);
     }
   },
@@ -162,10 +162,10 @@ export default Ember.Object.extend({
     @method updateFilterRecordArray
     @param {DS.FilteredRecordArray} array
     @param {Function} filter
-    @param {DS.Model} typeClass
+    @param {Schema} schema
     @param {InternalModel} record
   */
-  updateFilterRecordArray(array, filter, typeClass, record) {
+  updateFilterRecordArray(array, filter, schema, record) {
     heimdall.increment(updateFilterRecordArray);
     var shouldBeInArray = filter(record.getRecord());
     var recordArrays = this.recordArraysForRecord(record);
@@ -186,10 +186,9 @@ export default Ember.Object.extend({
     }
   },
 
-  populateLiveRecordArray(array, modelName) {
+  populateLiveRecordArray(array, schema) {
     heimdall.increment(populateLiveRecordArray);
-    var typeMap = this.store.typeMapFor(modelName);
-    var records = typeMap.records;
+    var records = schema.typeMap.records;
     var record;
 
     for (var i = 0; i < records.length; i++) {
@@ -210,48 +209,48 @@ export default Ember.Object.extend({
 
     @method updateFilter
     @param {Array} array
-    @param {String} modelName
+    @param {Schema} schema
     @param {Function} filter
   */
-  updateFilter(array, modelName, filter) {
+  updateFilter(array, schema, filter) {
     heimdall.increment(updateFilter);
-    var typeMap = this.store.typeMapFor(modelName);
-    var records = typeMap.records;
+    var records = schema.typeMap.records;
     var record;
 
     for (var i = 0; i < records.length; i++) {
       record = records[i];
 
       if (!record.isDeleted() && !record.isEmpty()) {
-        this.updateFilterRecordArray(array, filter, modelName, record);
+        this.updateFilterRecordArray(array, filter, schema, record);
       }
     }
   },
 
   /**
-    Get the `DS.RecordArray` for a type, which contains all loaded records of
+    Get the `DS.RecordArray` for a model class, which contains all loaded records of
     given type.
 
     @method liveRecordArrayFor
-    @param {Class} typeClass
+    @param {Schema} schema
     @return {DS.RecordArray}
   */
-  liveRecordArrayFor(typeClass) {
+  liveRecordArrayFor(schema) {
     heimdall.increment(liveRecordArrayFor);
-    return this.liveRecordArrays.get(typeClass);
+    return this.liveRecordArrays.get(schema);
   },
 
   /**
-    Create a `DS.RecordArray` for a type.
+    Create a `DS.RecordArray` for a model class.
 
     @method createRecordArray
-    @param {Class} typeClass
+    @param {Schema} schema
     @return {DS.RecordArray}
   */
-  createRecordArray(typeClass) {
+  createRecordArray(schema) {
     heimdall.increment(createRecordArray);
     var array = RecordArray.create({
-      type: typeClass,
+      type: schema.modelClass, // TODO deprecate somehow?
+      schema: schema,
       content: Ember.A(),
       store: this.store,
       isLoaded: true,
@@ -262,42 +261,44 @@ export default Ember.Object.extend({
   },
 
   /**
-    Create a `DS.FilteredRecordArray` for a type and register it for updates.
+    Create a `DS.FilteredRecordArray` for a model class and register it for updates.
 
     @method createFilteredRecordArray
-    @param {DS.Model} typeClass
+    @param {Schema} schema
     @param {Function} filter
     @param {Object} query (optional
     @return {DS.FilteredRecordArray}
   */
-  createFilteredRecordArray(typeClass, filter, query) {
+  createFilteredRecordArray(schema, filter, query) {
     heimdall.increment(createFilteredRecordArray);
     var array = FilteredRecordArray.create({
       query: query,
-      type: typeClass,
+      type: schema.modelClass,
+      schema: schema,
       content: Ember.A(),
       store: this.store,
       manager: this,
       filterFunction: filter
     });
 
-    this.registerFilteredRecordArray(array, typeClass, filter);
+    this.registerFilteredRecordArray(array, schema, filter);
 
     return array;
   },
 
   /**
-    Create a `DS.AdapterPopulatedRecordArray` for a type with given query.
+    Create a `DS.AdapterPopulatedRecordArray` for a model class with given query.
 
     @method createAdapterPopulatedRecordArray
-    @param {DS.Model} typeClass
+    @param {Schema} schema
     @param {Object} query
     @return {DS.AdapterPopulatedRecordArray}
   */
-  createAdapterPopulatedRecordArray(typeClass, query) {
+  createAdapterPopulatedRecordArray(schema, query) {
     heimdall.increment(createAdapterPopulatedRecordArray);
     var array = AdapterPopulatedRecordArray.create({
-      type: typeClass,
+      type: schema.modelClass,
+      schema: schema,
       query: query,
       content: Ember.A(),
       store: this.store,
@@ -310,22 +311,22 @@ export default Ember.Object.extend({
   },
 
   /**
-    Register a RecordArray for a given type to be backed by
+    Register a RecordArray for a given model class to be backed by
     a filter function. This will cause the array to update
-    automatically when records of that type change attribute
+    automatically when records of that model class change attribute
     values or states.
 
     @method registerFilteredRecordArray
     @param {DS.RecordArray} array
-    @param {DS.Model} typeClass
+    @param {Schema} schema
     @param {Function} filter
   */
-  registerFilteredRecordArray(array, typeClass, filter) {
+  registerFilteredRecordArray(array, schema, filter) {
     heimdall.increment(registerFilteredRecordArray);
-    var recordArrays = this.filteredRecordArrays.get(typeClass);
+    var recordArrays = this.filteredRecordArrays.get(schema);
     recordArrays.push(array);
 
-    this.updateFilter(array, typeClass, filter);
+    this.updateFilter(array, schema, filter);
   },
 
   /**
@@ -337,10 +338,10 @@ export default Ember.Object.extend({
   */
   unregisterRecordArray(array) {
     heimdall.increment(unregisterRecordArray);
-    var typeClass = array.type;
+    var schema = array.schema;
 
     // unregister filtered record array
-    const recordArrays = this.filteredRecordArrays.get(typeClass);
+    const recordArrays = this.filteredRecordArrays.get(schema);
     const removedFromFiltered = remove(recordArrays, array);
 
     // remove from adapter populated record array
@@ -349,10 +350,10 @@ export default Ember.Object.extend({
     if (!removedFromFiltered && !removedFromAdapterPopulated) {
 
       // unregister live record array
-      if (this.liveRecordArrays.has(typeClass)) {
-        var liveRecordArrayForType = this.liveRecordArrayFor(typeClass);
+      if (this.liveRecordArrays.has(schema)) {
+        var liveRecordArrayForType = this.liveRecordArrayFor(schema);
         if (array === liveRecordArrayForType) {
-          this.liveRecordArrays.delete(typeClass);
+          this.liveRecordArrays.delete(schema);
         }
       }
 

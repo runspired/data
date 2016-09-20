@@ -108,6 +108,7 @@ module.exports = {
     this.options.babel = this.options.babel || {};
     add(this.options.babel, 'blacklist', ['es6.modules', 'useStrict']);
     add(this.options.babel, 'plugins', require('./lib/stripped-build-plugins')(process.env.EMBER_ENV));
+    // this.options.babel.externalHelpers = true;
 
     this._hasSetupBabelOptions = true;
   },
@@ -122,6 +123,10 @@ module.exports = {
         development: app.bowerDirectory + '/ember-data/ember-data.js',
         production: app.bowerDirectory + '/ember-data/ember-data.prod.js'
       });
+    }
+
+    if (this.options.babel.externalHelpers) {
+      // this.app.import('./vendor/external-helpers.js', { prepend: true });
     }
   }
 };
