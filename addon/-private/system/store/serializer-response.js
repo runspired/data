@@ -72,8 +72,8 @@ export function validateDocumentStructure(doc) {
   @param {String} requestType
   @return {Object} JSON-API Document
 */
-export function normalizeResponseHelper(serializer, store, modelClass, payload, id, requestType) {
-  let normalizedResponse = serializer.normalizeResponse(store, modelClass, payload, id, requestType);
+export function normalizeResponseHelper(serializer, store, schema, payload, id, requestType) {
+  let normalizedResponse = serializer.normalizeResponse(store, schema.modelClass, payload, id, requestType);
   let validationErrors = [];
   runInDebug(() => {
     validationErrors = validateDocumentStructure(normalizedResponse);
