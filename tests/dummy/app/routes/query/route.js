@@ -24,6 +24,9 @@ export default Route.extend({
     let modelName = params.modelName;
     delete params.modelName;
 
+    // TODO @runspired we should bake console.time into heimdall as a flag
+    console.time('query');
+
     let token = heimdall.start('ember-data');
     return this.get('store').query(modelName, params)
       .then((records) => {
@@ -33,6 +36,8 @@ export default Route.extend({
         // and clutter our benchmarks and make it harder to time.
         records.toArray();
         heimdall.stop(token);
+        console.timeEnd('query');
+
         window.result = heimdall.toString();
 
         return records;
