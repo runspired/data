@@ -172,6 +172,17 @@ export default Ember.ArrayProxy.extend(Ember.Evented, {
     @private
     @param {InternalModel} internalModel
   */
+  _removeInternalModel(internalModel) {
+    get(this, 'content').removeObject(internalModel);
+  },
+
+  /**
+   Removes an internalModel to the `RecordArray`.
+
+   @method removeInternalModel
+   @private
+   @param {Array<InternalModel>} internalModels
+   */
   _removeInternalModels(internalModels) {
     get(this, 'content').removeObjects(internalModels);
   },

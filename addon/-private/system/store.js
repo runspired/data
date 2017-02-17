@@ -1700,12 +1700,16 @@ Store = Service.extend({
   unloadAll(modelName) {
     assert('Passing classes to store methods has been removed. Please pass a dasherized string instead of '+ inspect(modelName), !modelName || typeof modelName === 'string');
 
-    if (arguments.length === 0) {
-      this._identityMap.clear();
-    } else {
-      let trueModelName = this._classKeyFor(modelName);
-      this._recordMapFor(trueModelName).clear();
-    }
+    emberRun(() => {
+      this._backburner.run(() => {
+        if (arguments.length === 0) {
+          this._identityMap.clear();
+        } else {
+          let trueModelName = this._classKeyFor(modelName);
+          this._recordMapFor(trueModelName).clear();
+        }
+      });
+    });
   },
 
   /**

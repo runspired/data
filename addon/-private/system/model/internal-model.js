@@ -26,6 +26,7 @@ const {
   isEmpty,
   isEqual,
   setOwner,
+  run,
   RSVP,
   RSVP: { Promise }
 } = Ember;
@@ -351,13 +352,14 @@ export default class InternalModel {
   }
 
   dematerializeRecord() {
+    this._isDematerializing = true;
     if (this.record) {
-      this._isDematerializing = true;
       this.record.destroy();
       this.destroyRelationships();
-      this.updateRecordArrays();
       this.resetRecord();
     }
+
+    this.updateRecordArrays();
   }
 
   deleteRecord() {
@@ -475,7 +477,9 @@ export default class InternalModel {
   unloadRecord() {
     this.send('unloadRecord');
     this.dematerializeRecord();
-    Ember.run.schedule('destroy', this, '_checkForOrphanedInternalModels');
+    run.join(() => {
+      run.schedule('destroy', this, '_checkForOrphanedInternalModels')
+    });
   }
 
   _checkForOrphanedInternalModels() {

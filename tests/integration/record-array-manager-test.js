@@ -160,13 +160,13 @@ test('Should not filter a store.peekAll() array when a record property is change
     return store.peekRecord('car', 1);
   });
 
-  assert.equal(populateLiveRecordArray.called.length, 1);
-  assert.equal(updateFilterRecordArray.called.length, 0);
+  assert.equal(populateLiveRecordArray.called.length, 1, 'The total number of calls pre-update is 1');
+  assert.equal(updateFilterRecordArray.called.length, 0, 'The total number of calls pre-update is 0');
 
   run(() => car.set('model', 'Mini'));
 
-  assert.equal(populateLiveRecordArray.called.length, 1);
-  assert.equal(updateFilterRecordArray.called.length, 0);
+  assert.equal(populateLiveRecordArray.called.length, 1, 'The total number of calls post-update is still 1');
+  assert.equal(updateFilterRecordArray.called.length, 0, 'The total number of calls post-update is still 0');
 });
 
 test('#GH-4041 store#query AdapterPopulatedRecordArrays are removed from their managers instead of retained when #destroy is called', function(assert) {

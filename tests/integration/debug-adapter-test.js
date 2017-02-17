@@ -1,17 +1,20 @@
 import Ember from 'ember';
-
-import {module, test} from 'qunit';
-
+import { module, test } from 'qunit';
 import DS from 'ember-data';
 
-var App, store, debugAdapter;
-var get = Ember.get;
-var run = Ember.run;
+let App, store, debugAdapter;
+
+const {
+  A,
+  Application,
+  get,
+  run
+} = Ember;
 
 module("DS.DebugAdapter", {
   beforeEach() {
-    Ember.run(function() {
-      App = Ember.Application.create();
+    run(function() {
+      App = Application.create();
 
       App.StoreService = DS.Store.extend({});
 
@@ -43,7 +46,7 @@ module("DS.DebugAdapter", {
 
     debugAdapter.reopen({
       getModelTypes() {
-        return Ember.A([{ klass, name: 'post' }]);
+        return new A([{ klass, name: 'post' }]);
       }
     });
   },
@@ -82,9 +85,33 @@ test("Watching Model Types", function(assert) {
 });
 
 test("Watching Records", function(assert) {
-  var post, record, addedRecords, updatedRecords, removedIndex, removedCount;
+  let post, record, addedRecords, updatedRecords, removedIndex, removedCount;
 
-  Ember.run(function() {
+  function recordsAdded(wrappedRecords) {
+    console.log('records added', wrappedRecords);
+    addedRecords = wrappedRecords;
+  }
+
+  function recordsUpdated(wrappedRecords) {
+    console.log('records updated', wrappedRecords);
+    updatedRecords = wrappedRecords;
+  }
+
+  function recordsRemoved(index, count) {
+    console.log('records removed', index, count);
+    removedIndex = index;
+    removedCount = count;
+  }
+
+  let modelClassOrName;
+  if (debugAdapter.get('acceptsModelName')) {
+    modelClassOrName = 'post';
+  } else {
+    modelClassOrName = App.__container__.lookupFactory('model:post');
+  }
+  debugAdapter.watchRecords(modelClassOrName, recordsAdded, recordsUpdated, recordsRemoved);
+
+  run(function() {
     store.push({
       data: {
         type: 'post',
@@ -96,41 +123,22 @@ test("Watching Records", function(assert) {
     });
   });
 
-  var recordsAdded = function(wrappedRecords) {
-    addedRecords = wrappedRecords;
-  };
-  var  recordsUpdated = function(wrappedRecords) {
-    updatedRecords = wrappedRecords;
-  };
-  var recordsRemoved = function(index, count) {
-    removedIndex = index;
-    removedCount = count;
-  };
-
-  let modelClassOrName;
-  if (debugAdapter.get('acceptsModelName')) {
-    modelClassOrName = 'post';
-  } else {
-    modelClassOrName = App.__container__.lookupFactory('model:post');
-  }
-  debugAdapter.watchRecords(modelClassOrName, recordsAdded, recordsUpdated, recordsRemoved);
-
-  assert.equal(get(addedRecords, 'length'), 1);
+  assert.equal(get(addedRecords, 'length'), 1, 'We observed one record being added via push');
   record = addedRecords[0];
   assert.deepEqual(record.columnValues, { id: '1', title: 'Clean Post' });
   assert.deepEqual(record.filterValues, { isNew: false, isModified: false, isClean: true });
   assert.deepEqual(record.searchKeywords, ['1', 'Clean Post']);
   assert.deepEqual(record.color, 'black');
 
-  Ember.run(function() {
+  run(function() {
     post = store.findRecord('post', 1);
   });
 
-  Ember.run(function() {
+  run(function() {
     post.set('title', 'Modified Post');
   });
 
-  assert.equal(get(updatedRecords, 'length'), 1);
+  assert.equal(get(updatedRecords, 'length'), 1, 'We observed one record being updated');
   record = updatedRecords[0];
   assert.deepEqual(record.columnValues, { id: '1', title: 'Modified Post' });
   assert.deepEqual(record.filterValues, { isNew: false, isModified: true, isClean: false });
@@ -140,15 +148,16 @@ test("Watching Records", function(assert) {
   run(function() {
     post = store.createRecord('post', { id: '2', title: 'New Post' });
   });
-  assert.equal(get(addedRecords, 'length'), 1);
+
+  assert.equal(get(addedRecords, 'length'), 1, 'We observed one record being add on create');
   record = addedRecords[0];
   assert.deepEqual(record.columnValues, { id: '2', title: 'New Post' });
   assert.deepEqual(record.filterValues, { isNew: true, isModified: false, isClean: false });
   assert.deepEqual(record.searchKeywords, ['2', 'New Post']);
   assert.deepEqual(record.color, 'green');
 
-  Ember.run(post, 'unloadRecord');
+  run(post, 'unloadRecord');
 
-  assert.equal(removedIndex, 1);
-  assert.equal(removedCount, 1);
+  assert.equal(removedIndex, 1, 'We observed a record being removed at index 1');
+  assert.equal(removedCount, 1, 'We observed one record being removed');
 });

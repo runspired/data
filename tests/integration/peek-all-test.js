@@ -42,7 +42,7 @@ module("integration/peek-all - DS.Store#peekAll()", {
     store = createStore({ person: Person });
   },
   afterEach() {
-    run(store, 'destroy');
+    // run(store, 'destroy');
     Person = null;
     array = null;
   }

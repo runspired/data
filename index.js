@@ -135,5 +135,9 @@ module.exports = {
         production: app.bowerDirectory + '/ember-data/ember-data.prod.js'
       });
     }
+  },
+
+  isDevelopingAddon: function() {
+    return true;
   }
 };

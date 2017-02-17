@@ -88,9 +88,10 @@ export default class RecordArrayManager {
   }
 
   recordDidChange(internalModel) {
+    console.log('changed-record:' + internalModel.modelName + ':' + internalModel.id);
     heimdall.increment(recordDidChange);
     if (this.changedRecords.push(internalModel) !== 1) { return; }
-
+    console.log('scheduling change flush');
     emberRun.schedule('actions', this, this.updateRecordArrays);
   }
 
@@ -111,11 +112,14 @@ export default class RecordArrayManager {
     @method updateRecordArrays
   */
   updateRecordArrays() {
+    console.error('update-record-arrays');
     heimdall.increment(updateRecordArrays);
     let updated = this.changedRecords;
+    let updatedArrayRegistry = Object.create(null);
 
     for (let i = 0, l = updated.length; i < l; i++) {
       let internalModel = updated[i];
+      updatedArrayRegistry[internalModel.modelName] = true;
 
       // During dematerialization we don't want to rematerialize the record.
       // recordWasDeleted can cause other records to rematerialize because it
@@ -135,6 +139,15 @@ export default class RecordArrayManager {
     }
 
     updated.length = 0;
+
+    // TODO this may be the wrong place to do this because
+    // in theory internalModel.__recordArrays includes the live array
+    let updatedLiveArrayNames = Object.keys(updatedArrayRegistry);
+    for (let i = 0, l = updatedLiveArrayNames.length; i < l; i++) {
+      let modelName = updatedLiveArrayNames[i];
+      let liveRecordArray = this.liveRecordArrayFor(modelName);
+      this.syncLiveRecordArray(liveRecordArray, modelName);
+    }
   }
 
   _recordWasDeleted(internalModel) {
@@ -143,7 +156,9 @@ export default class RecordArrayManager {
 
     if (!recordArrays) { return; }
 
-    recordArrays.forEach(array => array._removeInternalModels([internalModel]));
+    for (let i = 0, l = recordArrays.length; i < l; i++) {
+      recordArrays[i]._removeInternalModel(internalModel);
+    }
 
     internalModel.__recordArrays = null;
   }
@@ -242,20 +257,28 @@ export default class RecordArrayManager {
     this.populateLiveRecordArray(array, modelName);
   }
 
-  populateLiveRecordArray(array, modelName) {
+  populateLiveRecordArray(liveArray, modelName) {
+    console.log('populate live record array');
     assert(`recordArrayManger.populateLiveRecordArray expects modelName not modelClass as the second param`, typeof modelName === 'string');
     heimdall.increment(populateLiveRecordArray);
     let recordMap = this.store._recordMapFor(modelName);
-    let records = recordMap.records;
-    let record;
+    let internalModels = recordMap.records;
+    let newLength = 0;
+    liveArray.set('content', new Ember.A());
 
-    for (let i = 0; i < records.length; i++) {
-      record = records[i];
+    for (let i = 0, l = internalModels.length; i < l; i++) {
+      let internalModel = internalModels[i];
 
-      if (!record.isDeleted() && !record.isEmpty()) {
-        this._addInternalModelToRecordArray(array, record);
+      if (!internalModel.isDeleted() && !internalModel.isEmpty() && !internalModel._isDematerializing) {
+        newLength++;
+        console.log('adding record', internalModel);
+        this._addInternalModelToRecordArray(liveArray, internalModel);
+      } else {
+        console.log('filtering record', internalModel);
       }
     }
+
+    liveArray.set('length', newLength);
   }
 
   /**
