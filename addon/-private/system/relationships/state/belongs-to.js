@@ -2,26 +2,26 @@ import Ember from 'ember';
 import {
   assertPolymorphicType,
   assert
-} from "ember-data/-private/debug";
+} from 'ember-data/-private/debug';
 import {
   PromiseObject
-} from "../../promise-proxies";
+} from '../../promise-proxies';
 import Relationship from "./implicit";
 
 export default class BelongsToRelationship extends Relationship {
-  constructor(store, internalModel, inverseKey, relationshipMeta) {
-    super(store, internalModel, inverseKey, relationshipMeta);
-    this.internalModel = internalModel;
-    this.key = relationshipMeta.key;
-    this.inverseRecord = null;
-    this.canonicalState = null;
+  get inverseRecord() {
+    return this.currentState;
+  }
+
+  set inverseRecord(v) {
+    this.currentState = v;
   }
 
   setRecord(newRecord) {
     if (newRecord) {
       this.addRecord(newRecord);
-    } else if (this.inverseRecord) {
-      this.removeRecord(this.inverseRecord);
+    } else if (this.currentState) {
+      this.removeRecord(this.currentState);
     }
     this.setHasData(true);
     this.setHasLoaded(true);
@@ -37,7 +37,9 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   addCanonicalRecord(newRecord) {
-    if (this.canonicalMembers.has(newRecord)) { return;}
+    if (this.canonicalState === newRecord) {
+      return;
+    }
 
     if (this.canonicalState) {
       this.removeCanonicalRecord(this.canonicalState);
@@ -54,11 +56,11 @@ export default class BelongsToRelationship extends Relationship {
   flushCanonical() {
     //temporary fix to not remove newly created records if server returned null.
     //TODO remove once we have proper diffing
-    if (this.inverseRecord && this.inverseRecord.isNew() && !this.canonicalState) {
+    if (this.currentState && this.currentState.isNew() && !this.canonicalState) {
       return;
     }
-    if (this.inverseRecord !== this.canonicalState) {
-      this.inverseRecord = this.canonicalState;
+    if (this.currentState !== this.canonicalState) {
+      this.currentState = this.canonicalState;
       this.notifyBelongsToChanged();
     }
 
@@ -66,15 +68,17 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   addRecord(newRecord) {
-    if (this.members.has(newRecord)) { return; }
+    if (this.currentState === newRecord) {
+      return;
+    }
 
     assertPolymorphicType(this.internalModel, this.relationshipMeta, newRecord);
 
-    if (this.inverseRecord) {
-      this.removeRecord(this.inverseRecord);
+    if (this.currentState) {
+      this.removeRecord(this.currentState);
     }
 
-    this.inverseRecord = newRecord;
+    this.currentState = newRecord;
     super.addRecord(newRecord);
     this.notifyBelongsToChanged();
   }
@@ -86,8 +90,11 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   removeRecordFromOwn(record) {
-    if (!this.members.has(record)) { return;}
-    this.inverseRecord = null;
+    if (this.currentState !== record) {
+      // assert('cannot remove record from belongsTo, record is not the currentState', false);
+      return;
+    }
+    this.currentState = null;
     super.removeRecordFromOwn(record);
     this.notifyBelongsToChanged();
   }
@@ -97,14 +104,17 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   removeCanonicalRecordFromOwn(record) {
-    if (!this.canonicalMembers.has(record)) { return;}
+    if (this.canonicalState !== record) {
+      // assert('Cannot remove canonical record from this belongs-to relationship, the record is not the canonicalState!', false);
+      return;
+    }
     this.canonicalState = null;
     super.removeCanonicalRecordFromOwn(record);
   }
 
   findRecord() {
-    if (this.inverseRecord) {
-      return this.store._findByInternalModel(this.inverseRecord);
+    if (this.currentState) {
+      return this.store._findByInternalModel(this.currentState);
     } else {
       return Ember.RSVP.Promise.resolve(null);
     }
@@ -135,13 +145,13 @@ export default class BelongsToRelationship extends Relationship {
 
       return PromiseObject.create({
         promise: promise,
-        content: this.inverseRecord ? this.inverseRecord.getRecord() : null
+        content: this.currentState ? this.currentState.getRecord() : null
       });
     } else {
-      if (this.inverseRecord === null) {
+      if (this.currentState === null) {
         return null;
       }
-      let toReturn = this.inverseRecord.getRecord();
+      let toReturn = this.currentState.getRecord();
       assert("You looked up the '" + this.key + "' relationship on a '" + this.internalModel.modelName + "' with id " + this.internalModel.id +  " but some of the associated records were not loaded. Either make sure they are all loaded together with the parent record, or specify that the relationship is async (`DS.belongsTo({ async: true })`)", toReturn === null || !toReturn.get('isEmpty'));
       return toReturn;
     }
@@ -155,8 +165,8 @@ export default class BelongsToRelationship extends Relationship {
     }
 
     // reload record, if it is already loaded
-    if (this.inverseRecord && this.inverseRecord.hasRecord) {
-      return this.inverseRecord.record.reload();
+    if (this.currentState && this.currentState.hasRecord) {
+      return this.currentState.record.reload();
     }
 
     return this.findRecord();
