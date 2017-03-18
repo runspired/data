@@ -7,6 +7,7 @@ import {
   PromiseObject
 } from '../../promise-proxies';
 import Relationship from "./implicit";
+const ImplicitRelationship = Relationship;
 
 export default class BelongsToRelationship extends Relationship {
   get inverseRecord() {
@@ -46,7 +47,21 @@ export default class BelongsToRelationship extends Relationship {
     }
 
     this.canonicalState = newRecord;
-    super.addCanonicalRecord(newRecord);
+
+    if (!this.canonicalMembers.has(newRecord)) {
+      this.canonicalMembers.add(newRecord);
+      if (this.inverseKey) {
+        newRecord._relationships.get(this.inverseKey).addCanonicalRecord(this.record);
+      } else {
+        if (!newRecord._implicitRelationships[this.inverseKeyForImplicit]) {
+          newRecord._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newRecord, this.key,  { options: {} });
+        }
+        newRecord._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.record);
+      }
+    }
+
+    this.flushCanonicalLater();
+    this.setHasData(true);
   }
 
   inverseDidDematerialize() {
@@ -64,7 +79,22 @@ export default class BelongsToRelationship extends Relationship {
       this.notifyBelongsToChanged();
     }
 
-    super.flushCanonical();
+    let list = this.members.list;
+    this.willSync = false;
+    //a hack for not removing new records
+    //TODO remove once we have proper diffing
+    let newRecords = [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].isNew()) {
+        newRecords.push(list[i]);
+      }
+    }
+
+    //TODO(Igor) make this less abysmally slow
+    this.members = this.canonicalMembers.copy();
+    for (let i = 0; i < newRecords.length; i++) {
+      this.members.add(newRecords[i]);
+    }
   }
 
   addRecord(newRecord) {
@@ -79,7 +109,22 @@ export default class BelongsToRelationship extends Relationship {
     }
 
     this.currentState = newRecord;
-    super.addRecord(newRecord);
+
+    if (!this.members.has(newRecord)) {
+      this.members.addWithIndex(newRecord, idx);
+      this.notifyRecordRelationshipAdded(newRecord, idx);
+      if (this.inverseKey) {
+        newRecord._relationships.get(this.inverseKey).addRecord(this.record);
+      } else {
+        if (!newRecord._implicitRelationships[this.inverseKeyForImplicit]) {
+          newRecord._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newRecord, this.key,  { options: {} });
+        }
+        newRecord._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.record);
+      }
+      this.record.updateRecordArrays();
+    }
+    this.setHasData(true);
+
     this.notifyBelongsToChanged();
   }
 
@@ -95,7 +140,11 @@ export default class BelongsToRelationship extends Relationship {
       return;
     }
     this.currentState = null;
-    super.removeRecordFromOwn(record);
+
+    this.members.delete(record);
+    this.notifyRecordRelationshipRemoved(record);
+    this.record.updateRecordArrays();
+
     this.notifyBelongsToChanged();
   }
 
@@ -109,7 +158,9 @@ export default class BelongsToRelationship extends Relationship {
       return;
     }
     this.canonicalState = null;
-    super.removeCanonicalRecordFromOwn(record);
+
+    this.canonicalMembers.delete(record);
+    this.flushCanonicalLater();
   }
 
   findRecord() {
