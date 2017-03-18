@@ -6,7 +6,7 @@ import {
 import {
   PromiseObject
 } from "../../promise-proxies";
-import Relationship from "./relationship";
+import Relationship from "./implicit";
 
 export default class BelongsToRelationship extends Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {

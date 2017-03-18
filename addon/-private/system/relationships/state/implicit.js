@@ -56,23 +56,15 @@ const {
 
 export default class ImplicitRelationship extends Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {
+    super(store, internalModel, inverseKey, relationshipMeta);
     heimdall.increment(newRelationship);
-    let async = relationshipMeta.options.async;
+
     this.members = new OrderedSet();
     this.canonicalMembers = new OrderedSet();
-    this.store = store;
-    this.key = relationshipMeta.key;
-    this.inverseKey = inverseKey;
-    this.internalModel = internalModel;
-    this.isAsync = typeof async === 'undefined' ? true : async;
-    this.relationshipMeta = relationshipMeta;
+
     //This probably breaks for polymorphic relationship in complex scenarios, due to
     //multiple possible modelNames
     this.inverseKeyForImplicit = this.internalModel.modelName + this.key;
-    this.linkPromise = null;
-    this.meta = null;
-    this.hasData = false;
-    this.hasLoaded = false;
   }
 
   // TODO @runspired deprecate this as it was never truly a record instance
@@ -160,7 +152,7 @@ export default class ImplicitRelationship extends Relationship {
         record._relationships.get(this.inverseKey).addCanonicalRecord(this.record);
       } else {
         if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit] = new Relationship(this.store, record, this.key,  { options: {} });
+          record._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, record, this.key,  { options: {} });
         }
         record._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.record);
       }
@@ -204,7 +196,7 @@ export default class ImplicitRelationship extends Relationship {
         record._relationships.get(this.inverseKey).addRecord(this.record);
       } else {
         if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit] = new Relationship(this.store, record, this.key,  { options: {} });
+          record._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, record, this.key,  { options: {} });
         }
         record._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.record);
       }

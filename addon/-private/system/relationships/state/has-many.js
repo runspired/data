@@ -1,6 +1,6 @@
 import { assert, assertPolymorphicType } from 'ember-data/-private/debug';
 import { PromiseManyArray } from '../../promise-proxies';
-import Relationship from './relationship';
+import Relationship from './implicit';
 import OrderedSet from '../../ordered-set';
 import ManyArray from '../../many-array';
 
