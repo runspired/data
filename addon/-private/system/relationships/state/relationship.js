@@ -18,4 +18,9 @@ export default class Relationship {
     this.hasLoaded = false;
     this.meta = null;
   }
+
+  destroy() {
+    this.currentState = null;
+    this.canonicalState = null;
+  }
 }

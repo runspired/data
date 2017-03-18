@@ -7,14 +7,17 @@ import ManyArray from '../../many-array';
 export default class ManyRelationship extends Relationship {
   constructor(store, record, inverseKey, relationshipMeta) {
     super(store, record, inverseKey, relationshipMeta);
-    this.belongsToType = relationshipMeta.type;
-    this.canonicalState = [];
     this.isPolymorphic = relationshipMeta.options.polymorphic;
+    this.relatedModelName = relationshipMeta.type;
     this._manyArray = null;
     this.__loadingPromise = null;
+
+    this.canonicalState = [];
+    this.currentState = [];
   }
 
   get _loadingPromise() { return this.__loadingPromise; }
+
   _updateLoadingPromise(promise, content) {
     if (this.__loadingPromise) {
       if (content) {
@@ -37,7 +40,7 @@ export default class ManyRelationship extends Relationship {
         canonicalState: this.canonicalState,
         store: this.store,
         relationship: this,
-        type: this.store.modelFor(this.belongsToType),
+        type: this.store.modelFor(this.relatedModelName),
         record: this.record,
         meta: this.meta,
         isPolymorphic: this.isPolymorphic
@@ -66,9 +69,10 @@ export default class ManyRelationship extends Relationship {
   }
 
   addCanonicalRecord(record, idx) {
-    if (this.canonicalMembers.has(record)) {
+    if (this.canonicalState.indexOf(record) !== -1) {
       return;
     }
+
     if (idx !== undefined) {
       this.canonicalState.splice(idx, 0, record);
     } else {
@@ -86,9 +90,10 @@ export default class ManyRelationship extends Relationship {
   }
 
   addRecord(record, idx) {
-    if (this.members.has(record)) {
+    if (this.currentState.indexOf(record) !== -1) {
       return;
     }
+
     super.addRecord(record, idx);
     // make lazy later
     this.manyArray.internalAddInternalModels([record], idx);
@@ -96,9 +101,10 @@ export default class ManyRelationship extends Relationship {
 
   removeCanonicalRecordFromOwn(record, idx) {
     let i = idx;
-    if (!this.canonicalMembers.has(record)) {
+    if (this.canonicalState.indexOf(record) === -1) {
       return;
     }
+
     if (i === undefined) {
       i = this.canonicalState.indexOf(record);
     }
@@ -116,9 +122,10 @@ export default class ManyRelationship extends Relationship {
   }
 
   removeRecordFromOwn(record, idx) {
-    if (!this.members.has(record)) {
+    if (this.currentState.indexOf(record) === -1) {
       return;
     }
+
     super.removeRecordFromOwn(record, idx);
     let manyArray = this.manyArray;
     if (idx !== undefined) {
@@ -160,15 +167,16 @@ export default class ManyRelationship extends Relationship {
   }
 
   computeChanges(records) {
-    let members = this.canonicalMembers;
+    let state = this.canonicalState;
     let recordsToRemove = [];
-    let recordSet = setForArray(records);
 
-    members.forEach(member => {
-      if (recordSet.has(member)) { return; }
+    for (let i = 0; i < state.length; i++) {
+      let internalModel = state[i];
 
-      recordsToRemove.push(member);
-    });
+      if (records.indexOf(internalModel) === -1) {
+        recordsToRemove.push(internalModel);
+      }
+    }
 
     this.removeCanonicalRecords(recordsToRemove);
 
