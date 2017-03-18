@@ -1,371 +1,85 @@
-/* global heimdall */
 import { assert, warn } from 'ember-data/-private/debug';
-import OrderedSet from '../../ordered-set';
 import _normalizeLink from '../../normalize-link';
 
-const {
-  addCanonicalRecord,
-  addCanonicalRecords,
-  addRecord,
-  addInternalModels,
-  clear,
-  findLink,
-  flushCanonical,
-  flushCanonicalLater,
-  newRelationship,
-  push,
-  removeCanonicalRecord,
-  removeCanonicalRecordFromInverse,
-  removeCanonicalRecordFromOwn,
-  removeCanonicalRecords,
-  removeRecord,
-  removeRecordFromInverse,
-  removeRecordFromOwn,
-  removeInternalModels,
-  setHasData,
-  setHasLoaded,
-  updateLink,
-  updateMeta,
-  updateRecordsFromAdapter
-} = heimdall.registerMonitor('system.relationships.state.relationship',
-  'addCanonicalRecord',
-  'addCanonicalRecords',
-  'addRecord',
-  'addInternalModels',
-  'clear',
-  'findLink',
-  'flushCanonical',
-  'flushCanonicalLater',
-  'newRelationship',
-  'push',
-  'removeCanonicalRecord',
-  'removeCanonicalRecordFromInverse',
-  'removeCanonicalRecordFromOwn',
-  'removeCanonicalRecords',
-  'removeRecord',
-  'removeRecordFromInverse',
-  'removeRecordFromOwn',
-  'removeInternalModels',
-  'setHasData',
-  'setHasLoaded',
-  'updateLink',
-  'updateMeta',
-  'updateRecordsFromAdapter'
-);
+let REL_ID = 0;
+
+export function relationshipIsAsync(meta) {
+  let value = meta.options.async;
+
+  return typeof value === 'undefined' ? true : value;
+}
+
+export function relationshipIsPolymorphic(meta) {
+  let value = meta.options.polymorphic;
+
+  return typeof value === 'undefined' ? true : value;
+}
 
 export default class Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {
-    heimdall.increment(newRelationship);
-    let async = relationshipMeta.options.async;
-    let polymorphic = relationshipMeta.options.polymorphic;
-    this.members = new OrderedSet();
-    this.canonicalMembers = new OrderedSet();
+    this.rel_id = REL_ID++;
     this.store = store;
-    this.key = relationshipMeta.key;
-    this.inverseKey = inverseKey;
     this.internalModel = internalModel;
-    this.isAsync = typeof async === 'undefined' ? true : async;
-    this.isPolymorphic = typeof polymorphic === 'undefined' ? true : polymorphic;
     this.relationshipMeta = relationshipMeta;
+    this.inverseKey = inverseKey;
+
+    this.key = relationshipMeta.key;
+    this.isAsync = relationshipIsAsync(relationshipMeta);
+    this.isPolymorphic = relationshipIsPolymorphic(relationshipMeta);
+
+    this.currentState = null;
+    this.canonicalState = null;
+
+    this.link = null;
+    this.linkPromise = null;
+    this.hasData = false;
+    this.hasLoaded = false;
+    this.meta = null;
+    this.willSync = false;
+
     //This probably breaks for polymorphic relationship in complex scenarios, due to
     //multiple possible modelNames
     this.inverseKeyForImplicit = this.internalModel.modelName + this.key;
-    this.linkPromise = null;
-    this.meta = null;
-    this.hasData = false;
-    this.hasLoaded = false;
   }
 
-  // TODO @runspired deprecate this as it was never truly a record instance
   get record() {
-    return this.internalModel;
+    throw new Error('use internalModel');
   }
 
   get parentType() {
-    return this.internalModel.modelName;
-  }
-
-  destroy() {
-    if (!this.inverseKey) { return; }
-
-    let allMembers =
-      // we actually want a union of members and canonicalMembers
-      // they should be disjoint but currently are not due to a bug
-      this.members.toArray().concat(this.canonicalMembers.toArray());
-
-    allMembers.forEach(inverseInternalModel => {
-      let relationship = inverseInternalModel._relationships.get(this.inverseKey);
-      // TODO: there is always a relationship in this case; this guard exists
-      // because there are tests that fail in teardown after putting things in
-      // invalid state
-      if (relationship) {
-        relationship.inverseDidDematerialize();
-      }
-    });
+    throw new Error('use internalModel.modelName');
   }
 
   inverseDidDematerialize() {}
+  notifyRecordRelationshipAdded() {}
+  notifyRecordRelationshipRemoved() {}
 
-  updateMeta(meta) {
-    heimdall.increment(updateMeta);
-    this.meta = meta;
+  removeRecord() {
+    throw new Error('not implemented');
+  }
+  removeCanonicalRecord() {
+    throw new Error('not implemented');
   }
 
-  clear() {
-    heimdall.increment(clear);
+  removeRecordFromInverse(internalModel) {
+    let inverseRelationship = internalModel._relationships.get(this.inverseKey);
 
-    let members = this.members.list;
-    while (members.length > 0) {
-      let member = members[0];
-      this.removeRecord(member);
-    }
-
-    let canonicalMembers = this.canonicalMembers.list;
-    while (canonicalMembers.length > 0) {
-      let member = canonicalMembers[0];
-      this.removeCanonicalRecord(member);
-    }
-  }
-
-  removeInternalModels(internalModels) {
-    heimdall.increment(removeInternalModels);
-    internalModels.forEach((intenralModel) => this.removeRecord(intenralModel));
-  }
-
-  addInternalModels(internalModels, idx) {
-    heimdall.increment(addInternalModels);
-    internalModels.forEach(internalModel => {
-      this.addRecord(internalModel, idx);
-      if (idx !== undefined) {
-        idx++;
-      }
-    });
-  }
-
-  addCanonicalRecords(records, idx) {
-    heimdall.increment(addCanonicalRecords);
-    for (let i=0; i<records.length; i++) {
-      if (idx !== undefined) {
-        this.addCanonicalRecord(records[i], i+idx);
-      } else {
-        this.addCanonicalRecord(records[i]);
-      }
-    }
-  }
-
-  addCanonicalRecord(record, idx) {
-    heimdall.increment(addCanonicalRecord);
-    if (!this.canonicalMembers.has(record)) {
-      this.canonicalMembers.add(record);
-      this.setupInverseRelationship(record);
-    }
-    this.flushCanonicalLater();
-    this.setHasData(true);
-  }
-
-  setupInverseRelationship(internalModel) {
-    if (this.inverseKey) {
-      let relationships = internalModel._relationships;
-      let relationshipExisted = relationships.has(this.inverseKey);
-      let relationship = relationships.get(this.inverseKey);
-      if (relationshipExisted || this.isPolymorphic) {
-        // if we have only just initialized the inverse relationship, then it
-        // already has this.internalModel in its canonicalMembers, so skip the
-        // unnecessary work.  The exception to this is polymorphic
-        // relationships whose members are determined by their inverse, as those
-        // relationships cannot efficiently find their inverse payloads.
-        relationship.addCanonicalRecord(this.internalModel);
-      }
-    } else {
-      let relationships = internalModel._implicitRelationships;
-      let relationship = relationships[this.inverseKeyForImplicit];
-      if (!relationship) {
-        relationship = relationships[this.inverseKeyForImplicit] =
-          new Relationship(this.store, internalModel, this.key,  { options: {} });
-      }
-      relationship.addCanonicalRecord(this.internalModel);
-    }
-  }
-
-  removeCanonicalRecords(records, idx) {
-    heimdall.increment(removeCanonicalRecords);
-    for (let i=0; i<records.length; i++) {
-      if (idx !== undefined) {
-        this.removeCanonicalRecord(records[i], i+idx);
-      } else {
-        this.removeCanonicalRecord(records[i]);
-      }
-    }
-  }
-
-  removeCanonicalRecord(record, idx) {
-    heimdall.increment(removeCanonicalRecord);
-    if (this.canonicalMembers.has(record)) {
-      this.removeCanonicalRecordFromOwn(record);
-      if (this.inverseKey) {
-        this.removeCanonicalRecordFromInverse(record);
-      } else {
-        if (record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit].removeCanonicalRecord(this.record);
-        }
-      }
-    }
-    this.flushCanonicalLater();
-  }
-
-  addRecord(record, idx) {
-    heimdall.increment(addRecord);
-    if (!this.members.has(record)) {
-      this.members.addWithIndex(record, idx);
-      this.notifyRecordRelationshipAdded(record, idx);
-      if (this.inverseKey) {
-        record._relationships.get(this.inverseKey).addRecord(this.record);
-      } else {
-        if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit] = new Relationship(this.store, record, this.key,  { options: {} });
-        }
-        record._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.record);
-      }
-      this.record.updateRecordArrays();
-    }
-    this.setHasData(true);
-  }
-
-  removeRecord(record) {
-    heimdall.increment(removeRecord);
-    if (this.members.has(record)) {
-      this.removeRecordFromOwn(record);
-      if (this.inverseKey) {
-        this.removeRecordFromInverse(record);
-      } else {
-        if (record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit].removeRecord(this.record);
-        }
-      }
-    }
-  }
-
-  removeRecordFromInverse(record) {
-    heimdall.increment(removeRecordFromInverse);
-    let inverseRelationship = record._relationships.get(this.inverseKey);
     //Need to check for existence, as the record might unloading at the moment
     if (inverseRelationship) {
-      inverseRelationship.removeRecordFromOwn(this.record);
+      inverseRelationship.removeRecordFromOwn(this.internalModel);
     }
   }
 
-  removeRecordFromOwn(record) {
-    heimdall.increment(removeRecordFromOwn);
-    this.members.delete(record);
-    this.notifyRecordRelationshipRemoved(record);
-    this.record.updateRecordArrays();
+  setupInverseRelationship() {
+    throw new Error('not implemented');
   }
 
-  removeCanonicalRecordFromInverse(record) {
-    heimdall.increment(removeCanonicalRecordFromInverse);
-    let inverseRelationship = record._relationships.get(this.inverseKey);
+  removeCanonicalRecordFromInverse(internalModel) {
+    let inverseRelationship = internalModel._relationships.get(this.inverseKey);
     //Need to check for existence, as the record might unloading at the moment
     if (inverseRelationship) {
-      inverseRelationship.removeCanonicalRecordFromOwn(this.record);
+      inverseRelationship.removeCanonicalRecordFromOwn(this.internalModel);
     }
-  }
-
-  removeCanonicalRecordFromOwn(record) {
-    heimdall.increment(removeCanonicalRecordFromOwn);
-    this.canonicalMembers.delete(record);
-    this.flushCanonicalLater();
-  }
-
-  flushCanonical() {
-    heimdall.increment(flushCanonical);
-    let list = this.members.list;
-    this.willSync = false;
-    //a hack for not removing new records
-    //TODO remove once we have proper diffing
-    let newRecords = [];
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].isNew()) {
-        newRecords.push(list[i]);
-      }
-    }
-
-    //TODO(Igor) make this less abysmally slow
-    this.members = this.canonicalMembers.copy();
-    for (let i = 0; i < newRecords.length; i++) {
-      this.members.add(newRecords[i]);
-    }
-  }
-
-  flushCanonicalLater() {
-    heimdall.increment(flushCanonicalLater);
-    if (this.willSync) {
-      return;
-    }
-    this.willSync = true;
-    this.store._updateRelationshipState(this);
-  }
-
-  updateLink(link) {
-    heimdall.increment(updateLink);
-    warn(`You pushed a record of type '${this.record.modelName}' with a relationship '${this.key}' configured as 'async: false'. You've included a link but no primary data, this may be an error in your payload.`, this.isAsync || this.hasData , {
-      id: 'ds.store.push-link-for-sync-relationship'
-    });
-    assert(`You have pushed a record of type '${this.record.modelName}' with '${this.key}' as a link, but the value of that link is not a string.`, typeof link === 'string' || link === null);
-
-    this.link = link;
-    this.linkPromise = null;
-    this.record.notifyPropertyChange(this.key);
-  }
-
-  findLink() {
-    heimdall.increment(findLink);
-    if (this.linkPromise) {
-      return this.linkPromise;
-    } else {
-      let promise = this.fetchLink();
-      this.linkPromise = promise;
-      return promise.then((result) => result);
-    }
-  }
-
-  updateRecordsFromAdapter(records) {
-    heimdall.increment(updateRecordsFromAdapter);
-    //TODO(Igor) move this to a proper place
-    //TODO Once we have adapter support, we need to handle updated and canonical changes
-    this.computeChanges(records);
-  }
-
-  notifyRecordRelationshipAdded() { }
-  notifyRecordRelationshipRemoved() { }
-
-  /*
-   `hasData` for a relationship is a flag to indicate if we consider the
-   content of this relationship "known". Snapshots uses this to tell the
-   difference between unknown (`undefined`) or empty (`null`). The reason for
-   this is that we wouldn't want to serialize unknown relationships as `null`
-   as that might overwrite remote state.
-
-   All relationships for a newly created (`store.createRecord()`) are
-   considered known (`hasData === true`).
-   */
-  setHasData(value) {
-    heimdall.increment(setHasData);
-    this.hasData = value;
-  }
-
-  /*
-   `hasLoaded` is a flag to indicate if we have gotten data from the adapter or
-   not when the relationship has a link.
-
-   This is used to be able to tell when to fetch the link and when to return
-   the local data in scenarios where the local state is considered known
-   (`hasData === true`).
-
-   Updating the link will automatically set `hasLoaded` to `false`.
-   */
-  setHasLoaded(value) {
-    heimdall.increment(setHasLoaded);
-    this.hasLoaded = value;
   }
 
   /*
@@ -377,8 +91,6 @@ export default class Relationship {
    of the relationship.
    */
   push(payload, initial) {
-    heimdall.increment(push);
-
     let hasData = false;
     let hasLink = false;
 
@@ -419,5 +131,74 @@ export default class Relationship {
     }
   }
 
+  flushCanonicalLater() {
+    if (this.willSync) {
+      return;
+    }
+    this.willSync = true;
+    this.store._updateRelationshipState(this);
+  }
+
+  updateMeta(meta) {
+    this.meta = meta;
+  }
+
   updateData() {}
+
+  /*
+   `hasData` for a relationship is a flag to indicate if we consider the
+   content of this relationship "known". Snapshots uses this to tell the
+   difference between unknown (`undefined`) or empty (`null`). The reason for
+   this is that we wouldn't want to serialize unknown relationships as `null`
+   as that might overwrite remote state.
+
+   All relationships for a newly created (`store.createRecord()`) are
+   considered known (`hasData === true`).
+   */
+  setHasData(value) {
+    this.hasData = value;
+  }
+
+  /*
+   `hasLoaded` is a flag to indicate if we have gotten data from the adapter or
+   not when the relationship has a link.
+
+   This is used to be able to tell when to fetch the link and when to return
+   the local data in scenarios where the local state is considered known
+   (`hasData === true`).
+
+   Updating the link will automatically set `hasLoaded` to `false`.
+   */
+  setHasLoaded(value) {
+    this.hasLoaded = value;
+  }
+
+  findLink() {
+    if (this.linkPromise) {
+      return this.linkPromise;
+    } else {
+      let promise = this.fetchLink();
+      this.linkPromise = promise;
+      return promise.then((result) => result);
+    }
+  }
+
+  updateLink(link) {
+    warn(`You pushed a record of type '${this.internalModel.modelName}' with a relationship '${this.key}' configured as 'async: false'. You've included a link but no primary data, this may be an error in your payload.`, this.isAsync || this.hasData , {
+      id: 'ds.store.push-link-for-sync-relationship'
+    });
+    assert(`You have pushed a record of type '${this.internalModel.modelName}' with '${this.key}' as a link, but the value of that link is not a string.`, typeof link === 'string' || link === null);
+
+    this.link = link;
+    this.linkPromise = null;
+    this.internalModel.notifyPropertyChange(this.key);
+  }
+
+  clear() {
+    throw new Error('not implemented');
+  }
+
+  destroy() {
+    throw new Error('not implemented');
+  }
 }

@@ -2,61 +2,97 @@ import Ember from 'ember';
 import {
   assertPolymorphicType,
   assert
-} from "ember-data/-private/debug";
+} from 'ember-data/-private/debug';
 import {
   PromiseObject
-} from "../../promise-proxies";
-import Relationship from "./relationship";
+} from '../../promise-proxies';
+import ImplicitRelationship from './implicit';
+import Relationship from './relationship';
 
 export default class BelongsToRelationship extends Relationship {
   constructor(store, internalModel, inverseKey, relationshipMeta) {
     super(store, internalModel, inverseKey, relationshipMeta);
-    this.internalModel = internalModel;
-    this.key = relationshipMeta.key;
-    this.inverseRecord = null;
-    this.canonicalState = null;
+    this.kind = 'belongs-to';
+  }
+  get inverseRecord() {
+    return this.currentState;
+  }
+
+  set inverseRecord(v) {
+    this.currentState = v;
   }
 
   setRecord(newRecord) {
     if (newRecord) {
       this.addRecord(newRecord);
-    } else if (this.inverseRecord) {
-      this.removeRecord(this.inverseRecord);
+    } else if (this.currentState) {
+      this.removeRecord(this.currentState);
     }
     this.setHasData(true);
     this.setHasLoaded(true);
   }
 
-  setCanonicalRecord(newRecord) {
-    if (newRecord) {
-      this.addCanonicalRecord(newRecord);
+  setCanonicalRecord(newInternalModel) {
+    if (newInternalModel) {
+      this.addCanonicalRecord(newInternalModel);
     } else if (this.canonicalState) {
       this.removeCanonicalRecord(this.canonicalState);
     }
     this.flushCanonicalLater();
   }
 
-  setInitialCanonicalRecord(record) {
-    if (!record) { return; }
+  // TODO @runspired is this still a win now that relationships are cheap and less noisy?
+  setInitialCanonicalRecord(internalModel) {
+    if (!internalModel) { return; }
 
     // When we initialize a belongsTo relationship, we want to avoid work like
     // notifying our internalModel that we've "changed" and excessive thrash on
     // setting up inverse relationships
-    this.canonicalMembers.add(record);
-    this.members.add(record);
-    this.inverseRecord = this.canonicalState = record;
-    this.setupInverseRelationship(record);
+    this.currentState = this.canonicalState = internalModel;
+    this.setupInverseRelationship(internalModel);
+
+    // this.flushCanonicalLater();
+    // this.setHasData(true);
   }
 
-  addCanonicalRecord(newRecord) {
-    if (this.canonicalMembers.has(newRecord)) { return;}
+  setupInverseRelationship(internalModel) {
+    if (this.inverseKey) {
+      let relationships = internalModel._relationships;
+      let relationshipExisted = relationships.has(this.inverseKey);
+      let relationship = relationships.get(this.inverseKey);
+      if (relationshipExisted || this.isPolymorphic) {
+        // if we have only just initialized the inverse relationship, then it
+        // already has this.internalModel in its canonicalMembers, so skip the
+        // unnecessary work.  The exception to this is polymorphic
+        // relationships whose members are determined by their inverse, as those
+        // relationships cannot efficiently find their inverse payloads.
+        relationship.addCanonicalRecord(this.internalModel);
+      }
+    } else {
+      let relationships = internalModel._implicitRelationships;
+      let relationship = relationships[this.inverseKeyForImplicit];
+      if (!relationship) {
+        relationship = relationships[this.inverseKeyForImplicit] =
+          new ImplicitRelationship(this.store, internalModel, this.key,  { options: {} });
+      }
+      relationship.addCanonicalRecord(this.internalModel);
+    }
+  }
+
+  addCanonicalRecord(newInternalModel) {
+    if (this.canonicalState === newInternalModel) {
+      return;
+    }
 
     if (this.canonicalState) {
       this.removeCanonicalRecord(this.canonicalState);
     }
 
-    this.canonicalState = newRecord;
-    super.addCanonicalRecord(newRecord);
+    this.canonicalState = newInternalModel;
+    this.setupInverseRelationship(newInternalModel);
+
+    this.flushCanonicalLater();
+    this.setHasData(true);
   }
 
   inverseDidDematerialize() {
@@ -64,30 +100,51 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   flushCanonical() {
-    //temporary fix to not remove newly created records if server returned null.
-    //TODO remove once we have proper diffing
-    if (this.inverseRecord && this.inverseRecord.isNew() && !this.canonicalState) {
+    this.willSync = false;
+
+    // don't remove newly created records if server returned null.
+    if (this.currentState && this.currentState.isNew() && !this.canonicalState) {
       return;
     }
-    if (this.inverseRecord !== this.canonicalState) {
-      this.inverseRecord = this.canonicalState;
+
+    if (this.currentState !== this.canonicalState) {
+      this.currentState = this.canonicalState;
       this.notifyBelongsToChanged();
     }
-
-    super.flushCanonical();
   }
 
-  addRecord(newRecord) {
-    if (this.members.has(newRecord)) { return; }
-
-    assertPolymorphicType(this.internalModel, this.relationshipMeta, newRecord);
-
-    if (this.inverseRecord) {
-      this.removeRecord(this.inverseRecord);
+  addRecord(newInternalModel) {
+    if (this.currentState === newInternalModel) {
+      return;
     }
 
-    this.inverseRecord = newRecord;
-    super.addRecord(newRecord);
+    assertPolymorphicType(this.internalModel, this.relationshipMeta, newInternalModel);
+
+    if (this.currentState) {
+      this.removeRecord(this.currentState);
+    }
+
+    this.currentState = newInternalModel;
+
+    // TODO implicit-legacy @runspired is this needed?
+    this.notifyRecordRelationshipAdded(newInternalModel, 0);
+
+    if (this.inverseKey) {
+      newInternalModel._relationships.get(this.inverseKey).addRecord(this.internalModel);
+    } else {
+      let relationships = newInternalModel._implicitRelationships;
+      let relationship = relationships[this.inverseKeyForImplicit];
+
+      if (!relationship) {
+        relationship = relationships[this.inverseKeyForImplicit] =
+          new ImplicitRelationship(this.store, newInternalModel, this.key,  { options: {} });
+      }
+      relationship.addRecord(this.internalModel);
+    }
+
+    this.internalModel.updateRecordArrays();
+    this.setHasData(true);
+
     this.notifyBelongsToChanged();
   }
 
@@ -97,10 +154,31 @@ export default class BelongsToRelationship extends Relationship {
     this.setRecord(content ? content._internalModel : content);
   }
 
-  removeRecordFromOwn(record) {
-    if (!this.members.has(record)) { return;}
-    this.inverseRecord = null;
-    super.removeRecordFromOwn(record);
+  removeRecord(internalModel) {
+    if (this.currentState === internalModel) {
+      this.removeRecordFromOwn(internalModel);
+
+      if (this.inverseKey) {
+        this.removeRecordFromInverse(internalModel);
+      } else {
+        if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+          internalModel._implicitRelationships[this.inverseKeyForImplicit].removeRecord(this.internalModel);
+        }
+      }
+    }
+  }
+
+  removeRecordFromOwn(internalModel) {
+    if (this.currentState !== internalModel) {
+      // assert('cannot remove record from belongsTo, record is not the currentState', false);
+      return;
+    }
+    this.currentState = null;
+
+    // TODO implicit-legacy @runspired is this needed?
+    this.notifyRecordRelationshipRemoved(internalModel);
+    this.internalModel.updateRecordArrays();
+
     this.notifyBelongsToChanged();
   }
 
@@ -108,27 +186,48 @@ export default class BelongsToRelationship extends Relationship {
     this.internalModel.notifyBelongsToChanged(this.key);
   }
 
-  removeCanonicalRecordFromOwn(record) {
-    if (!this.canonicalMembers.has(record)) { return;}
+  removeCanonicalRecord(internalModel) {
+    if (this.canonicalState === internalModel) {
+      this.removeCanonicalRecordFromOwn(internalModel);
+
+      if (this.inverseKey) {
+        this.removeCanonicalRecordFromInverse(internalModel);
+      } else {
+        if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+          internalModel._implicitRelationships[this.inverseKeyForImplicit].removeCanonicalRecord(this.internalModel);
+        }
+      }
+    }
+
+    this.flushCanonicalLater();
+  }
+
+  removeCanonicalRecordFromOwn(internalModel) {
+    if (this.canonicalState !== internalModel) {
+      // assert('Cannot remove canonical record from this belongs-to relationship, the record is not the canonicalState!', false);
+      return;
+    }
     this.canonicalState = null;
-    super.removeCanonicalRecordFromOwn(record);
+
+    this.flushCanonicalLater();
   }
 
   findRecord() {
-    if (this.inverseRecord) {
-      return this.store._findByInternalModel(this.inverseRecord);
+    if (this.currentState) {
+      return this.store._findByInternalModel(this.currentState);
     } else {
       return Ember.RSVP.Promise.resolve(null);
     }
   }
 
   fetchLink() {
-    return this.store.findBelongsTo(this.internalModel, this.link, this.relationshipMeta).then((record) => {
-      if (record) {
-        this.addRecord(record);
-      }
-      return record;
-    });
+    return this.store.findBelongsTo(this.internalModel, this.link, this.relationshipMeta)
+      .then((internalModel) => {
+        if (internalModel) {
+          this.addRecord(internalModel);
+        }
+        return internalModel;
+      });
   }
 
   getRecord() {
@@ -147,13 +246,13 @@ export default class BelongsToRelationship extends Relationship {
 
       return PromiseObject.create({
         promise: promise,
-        content: this.inverseRecord ? this.inverseRecord.getRecord() : null
+        content: this.currentState ? this.currentState.getRecord() : null
       });
     } else {
-      if (this.inverseRecord === null) {
+      if (this.currentState === null) {
         return null;
       }
-      let toReturn = this.inverseRecord.getRecord();
+      let toReturn = this.currentState.getRecord();
       assert("You looked up the '" + this.key + "' relationship on a '" + this.internalModel.modelName + "' with id " + this.internalModel.id +  " but some of the associated records were not loaded. Either make sure they are all loaded together with the parent record, or specify that the relationship is async (`DS.belongsTo({ async: true })`)", toReturn === null || !toReturn.get('isEmpty'));
       return toReturn;
     }
@@ -167,8 +266,8 @@ export default class BelongsToRelationship extends Relationship {
     }
 
     // reload record, if it is already loaded
-    if (this.inverseRecord && this.inverseRecord.hasRecord) {
-      return this.inverseRecord.record.reload();
+    if (this.currentState && this.currentState.hasRecord) {
+      return this.currentState.record.reload();
     }
 
     return this.findRecord();
@@ -180,6 +279,41 @@ export default class BelongsToRelationship extends Relationship {
       this.setInitialCanonicalRecord(internalModel);
     } else {
       this.setCanonicalRecord(internalModel);
+    }
+  }
+
+  clear() {
+    if (this.currentState) {
+      this.removeRecord(this.currentState);
+    }
+
+    if (this.canonicalState) {
+      this.removeCanonicalRecord(this.canonicalState);
+    }
+  }
+
+  destroy() {
+    if (!this.inverseKey) { return; }
+
+    if (this.currentState) {
+      let relationship = this.currentState._relationships.get(this.inverseKey);
+      // TODO: there is always a relationship in this case; this guard exists
+      // because there are tests that fail in teardown after putting things in
+      // invalid state
+      if (relationship) {
+        relationship.inverseDidDematerialize();
+      }
+    }
+
+    if (this.canonicalState && this.canonicalState !== this.currentState) {
+      let relationship = this.canonicalState._relationships.get(this.inverseKey);
+      // TODO: there is always a relationship in this case; this guard exists
+      // because there are tests that fail in teardown after putting things in
+      // invalid state
+      // TODO: can we remove this with the decomplection?
+      if (relationship) {
+        relationship.inverseDidDematerialize();
+      }
     }
   }
 }
