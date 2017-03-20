@@ -3,6 +3,7 @@ import { assert, runInDebug } from "ember-data/-private/debug";
 import RootState from "./states";
 import Relationships from "../relationships/state/create";
 import Snapshot from "../snapshot";
+import UniqueArray from '../unique-array';
 import isEnabled from '../../features';
 import OrderedSet from "../ordered-set";
 
@@ -30,28 +31,6 @@ const {
 } = Ember;
 
 const assign = Ember.assign || Ember.merge;
-
-class UniqueArray {
-  constructor(key) {
-    this.key = key;
-    this.seen = Object.create(null);
-    this.items = [];
-  }
-
-  push(...additions) {
-    let seen = this.seen;
-    let items = this.items;
-    let key = this.key;
-
-    for (let i = 0; i < additions.length; i++) {
-      let value = additions[i];
-      if (value && !seen[value[key]]) {
-        seen[value[key]] = true;
-        items.push(value);
-      }
-    }
-  }
-}
 
 /*
   The TransitionChainMap caches the `state.enters`, `state.setups`, and final state reached

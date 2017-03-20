@@ -1,8 +1,10 @@
 import { assert, assertPolymorphicType } from 'ember-data/-private/debug';
 import { PromiseManyArray } from '../../promise-proxies';
-import Relationship from './implicit';
+import Relationship from './relationship';
+import ImplicitRelationship from './implicit';
 import ManyArray from '../../many-array';
 import diffArray from '../../diff-array';
+import UniqueArray from '../../unique-array';
 
 export default class ManyRelationship extends Relationship {
   constructor(store, record, inverseKey, relationshipMeta) {
@@ -52,7 +54,28 @@ export default class ManyRelationship extends Relationship {
   }
 
   destroy() {
-    super.destroy();
+    if (!this.inverseKey) { return; }
+
+    const toIterate = this.canonicalState.concat(this.currentState);
+    const uniqueArray = new UniqueArray('_internalId');
+
+    uniqueArray.push(...toIterate);
+
+    const items = uniqueArray.items;
+
+    for (let i = 0; i < items.length; i++) {
+      let inverseInternalModel = items[i];
+      let relationship = inverseInternalModel._relationships.get(this.inverseKey);
+
+      // TODO: there is always a relationship in this case; this guard exists
+      // because there are tests that fail in teardown after putting things in
+      // invalid state
+      if (relationship) {
+        relationship.inverseDidDematerialize();
+      }
+    }
+
+
     if (this._manyArray) {
       this._manyArray.destroy();
       this._manyArray = null;
@@ -70,17 +93,28 @@ export default class ManyRelationship extends Relationship {
     }
   }
 
-  addCanonicalRecord(record, idx) {
-    if (this.canonicalState.indexOf(record) !== -1) {
+  addCanonicalRecord(internalModel, idx) {
+    if (this.canonicalState.indexOf(internalModel) !== -1) {
       return;
     }
 
     if (idx !== undefined) {
-      this.canonicalState.splice(idx, 0, record);
+      this.canonicalState.splice(idx, 0, internalModel);
     } else {
-      this.canonicalState.push(record);
+      this.canonicalState.push(internalModel);
     }
-    super.addCanonicalRecord(record, idx);
+
+    if (this.inverseKey) {
+      internalModel._relationships.get(this.inverseKey).addCanonicalRecord(this.internalModel);
+    } else {
+      if (!internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+        internalModel._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, internalModel, this.key,  { options: {} });
+      }
+      internalModel._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.internalModel);
+    }
+
+    this.flushCanonicalLater();
+    this.setHasData(true);
   }
 
   inverseDidDematerialize() {
@@ -91,14 +125,81 @@ export default class ManyRelationship extends Relationship {
     this.notifyHasManyChanged();
   }
 
+  addInternalModels(internalModels, idx) {
+    internalModels.forEach(internalModel => {
+      this.addRecord(internalModel, idx);
+      if (idx !== undefined) {
+        idx++;
+      }
+    });
+  }
+
   addRecord(record, idx) {
     if (this.currentState.indexOf(record) !== -1) {
       return;
     }
 
     this.manyArray.internalAddInternalModels([record], idx);
-    super.addRecord(record, idx);
-    // make lazy later
+    this.notifyRecordRelationshipAdded(record, idx);
+
+    if (this.inverseKey) {
+      record._relationships.get(this.inverseKey).addRecord(this.internalModel);
+    } else {
+      if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
+        record._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, record, this.key,  { options: {} });
+      }
+      record._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.internalModel);
+    }
+
+    this.internalModel.updateRecordArrays();
+    this.setHasData(true);
+  }
+
+  removeInternalModels(internalModels) {
+    internalModels.forEach((internalModel) => this.removeRecord(internalModel));
+  }
+
+  removeRecord(internalModel) {
+    if (this.currentState.indexOf(internalModel) === -1) {
+      return;
+    }
+
+    this.removeRecordFromOwn(internalModel);
+    if (this.inverseKey) {
+      this.removeRecordFromInverse(internalModel);
+    } else {
+      if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+        internalModel._implicitRelationships[this.inverseKeyForImplicit].removeRecord(this.internalModel);
+      }
+    }
+  }
+
+  // TODO now that state is kept in a nice array we can do this via a single splice
+  removeCanonicalRecords(records, idx) {
+    for (let i=0; i<records.length; i++) {
+      if (idx !== undefined) {
+        this.removeCanonicalRecord(records[i], i+idx);
+      } else {
+        this.removeCanonicalRecord(records[i]);
+      }
+    }
+  }
+
+  removeCanonicalRecord(internalModel, idx) {
+    if (this.canonicalState.indexOf(internalModel) === -1) {
+      return;
+    }
+
+    this.removeCanonicalRecordFromOwn(internalModel);
+    if (this.inverseKey) {
+      this.removeCanonicalRecordFromInverse(internalModel);
+    } else {
+      if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+        internalModel._implicitRelationships[this.inverseKeyForImplicit].removeCanonicalRecord(this.internalModel);
+      }
+    }
+
+    this.flushCanonicalLater();
   }
 
   removeCanonicalRecordFromOwn(record, idx) {
@@ -113,10 +214,12 @@ export default class ManyRelationship extends Relationship {
     if (i > -1) {
       this.canonicalState.splice(i, 1);
     }
-    super.removeCanonicalRecordFromOwn(record, idx);
+
+    this.flushCanonicalLater();
   }
 
   flushCanonical() {
+    this.willSync = false;
     let toSet = this.canonicalState;
 
     //a hack for not removing new records
@@ -145,8 +248,6 @@ export default class ManyRelationship extends Relationship {
         this.notifyHasManyChanged();
       }
     }
-
-    super.flushCanonical();
   }
 
   removeRecordFromOwn(record, idx) {
@@ -154,8 +255,11 @@ export default class ManyRelationship extends Relationship {
       return;
     }
 
-    super.removeRecordFromOwn(record, idx);
+    this.notifyRecordRelationshipRemoved(record);
+    this.internalModel.updateRecordArrays();
+
     let manyArray = this.manyArray;
+
     if (idx !== undefined) {
       //TODO(Igor) not used currently, fix
       this.currentState.removeAt(idx);
@@ -280,5 +384,23 @@ export default class ManyRelationship extends Relationship {
 
   replace(idx, amt, objects) {
     this.currentState.splice(idx, amt, ...objects);
+  }
+
+  updateRecordsFromAdapter(records) {
+    //TODO(Igor) move this to a proper place
+    //TODO Once we have adapter support, we need to handle updated and canonical changes
+    this.computeChanges(records);
+  }
+
+  clear() {
+    let arr = this.currentState;
+    while (arr.length > 0) {
+      this.removeRecord(arr[0]);
+    }
+
+    arr = this.canonicalState;
+    while (arr.length > 0) {
+      this.removeCanonicalRecord(arr[0]);
+    }
   }
 }
