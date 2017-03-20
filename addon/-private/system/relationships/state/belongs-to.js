@@ -6,10 +6,14 @@ import {
 import {
   PromiseObject
 } from '../../promise-proxies';
-import Relationship from "./implicit";
-const ImplicitRelationship = Relationship;
+import ImplicitRelationship from './implicit';
+import Relationship from './relationship';
 
 export default class BelongsToRelationship extends Relationship {
+  constructor(store, internalModel, inverseKey, relationshipMeta) {
+    super(store, internalModel, inverseKey, relationshipMeta);
+    this.kind = 'belongs-to';
+  }
   get inverseRecord() {
     return this.currentState;
   }
@@ -28,17 +32,17 @@ export default class BelongsToRelationship extends Relationship {
     this.setHasLoaded(true);
   }
 
-  setCanonicalRecord(newRecord) {
-    if (newRecord) {
-      this.addCanonicalRecord(newRecord);
+  setCanonicalRecord(newInternalModel) {
+    if (newInternalModel) {
+      this.addCanonicalRecord(newInternalModel);
     } else if (this.canonicalState) {
       this.removeCanonicalRecord(this.canonicalState);
     }
     this.flushCanonicalLater();
   }
 
-  addCanonicalRecord(newRecord) {
-    if (this.canonicalState === newRecord) {
+  addCanonicalRecord(newInternalModel) {
+    if (this.canonicalState === newInternalModel) {
       return;
     }
 
@@ -46,18 +50,15 @@ export default class BelongsToRelationship extends Relationship {
       this.removeCanonicalRecord(this.canonicalState);
     }
 
-    this.canonicalState = newRecord;
+    this.canonicalState = newInternalModel;
 
-    if (!this.canonicalMembers.has(newRecord)) {
-      this.canonicalMembers.add(newRecord);
-      if (this.inverseKey) {
-        newRecord._relationships.get(this.inverseKey).addCanonicalRecord(this.record);
-      } else {
-        if (!newRecord._implicitRelationships[this.inverseKeyForImplicit]) {
-          newRecord._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newRecord, this.key,  { options: {} });
-        }
-        newRecord._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.record);
+    if (this.inverseKey) {
+      newInternalModel._relationships.get(this.inverseKey).addCanonicalRecord(this.internalModel);
+    } else {
+      if (!newInternalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+        newInternalModel._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newInternalModel, this.key,  { options: {} });
       }
+      newInternalModel._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.internalModel);
     }
 
     this.flushCanonicalLater();
@@ -69,60 +70,45 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   flushCanonical() {
-    //temporary fix to not remove newly created records if server returned null.
-    //TODO remove once we have proper diffing
+    this.willSync = false;
+
+    // don't remove newly created records if server returned null.
     if (this.currentState && this.currentState.isNew() && !this.canonicalState) {
       return;
     }
+
     if (this.currentState !== this.canonicalState) {
       this.currentState = this.canonicalState;
       this.notifyBelongsToChanged();
     }
-
-    let list = this.members.list;
-    this.willSync = false;
-    //a hack for not removing new records
-    //TODO remove once we have proper diffing
-    let newRecords = [];
-    for (let i = 0; i < list.length; i++) {
-      if (list[i].isNew()) {
-        newRecords.push(list[i]);
-      }
-    }
-
-    //TODO(Igor) make this less abysmally slow
-    this.members = this.canonicalMembers.copy();
-    for (let i = 0; i < newRecords.length; i++) {
-      this.members.add(newRecords[i]);
-    }
   }
 
-  addRecord(newRecord) {
-    if (this.currentState === newRecord) {
+  addRecord(newInternalModel) {
+    if (this.currentState === newInternalModel) {
       return;
     }
 
-    assertPolymorphicType(this.internalModel, this.relationshipMeta, newRecord);
+    assertPolymorphicType(this.internalModel, this.relationshipMeta, newInternalModel);
 
     if (this.currentState) {
       this.removeRecord(this.currentState);
     }
 
-    this.currentState = newRecord;
+    this.currentState = newInternalModel;
 
-    if (!this.members.has(newRecord)) {
-      this.members.addWithIndex(newRecord, idx);
-      this.notifyRecordRelationshipAdded(newRecord, idx);
-      if (this.inverseKey) {
-        newRecord._relationships.get(this.inverseKey).addRecord(this.record);
-      } else {
-        if (!newRecord._implicitRelationships[this.inverseKeyForImplicit]) {
-          newRecord._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newRecord, this.key,  { options: {} });
-        }
-        newRecord._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.record);
+    // TODO implicit-legacy @runspired is this needed?
+    this.notifyRecordRelationshipAdded(newInternalModel, 0);
+
+    if (this.inverseKey) {
+      newInternalModel._relationships.get(this.inverseKey).addRecord(this.internalModel);
+    } else {
+      if (!newInternalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+        newInternalModel._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, newInternalModel, this.key,  { options: {} });
       }
-      this.record.updateRecordArrays();
+      newInternalModel._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.internalModel);
     }
+
+    this.internalModel.updateRecordArrays();
     this.setHasData(true);
 
     this.notifyBelongsToChanged();
@@ -134,16 +120,30 @@ export default class BelongsToRelationship extends Relationship {
     this.setRecord(content ? content._internalModel : content);
   }
 
-  removeRecordFromOwn(record) {
-    if (this.currentState !== record) {
+  removeRecord(internalModel) {
+    if (this.currentState === internalModel) {
+      this.removeRecordFromOwn(internalModel);
+
+      if (this.inverseKey) {
+        this.removeRecordFromInverse(internalModel);
+      } else {
+        if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+          internalModel._implicitRelationships[this.inverseKeyForImplicit].removeRecord(this.internalModel);
+        }
+      }
+    }
+  }
+
+  removeRecordFromOwn(internalModel) {
+    if (this.currentState !== internalModel) {
       // assert('cannot remove record from belongsTo, record is not the currentState', false);
       return;
     }
     this.currentState = null;
 
-    this.members.delete(record);
-    this.notifyRecordRelationshipRemoved(record);
-    this.record.updateRecordArrays();
+    // TODO implicit-legacy @runspired is this needed?
+    this.notifyRecordRelationshipRemoved(internalModel);
+    this.internalModel.updateRecordArrays();
 
     this.notifyBelongsToChanged();
   }
@@ -152,14 +152,29 @@ export default class BelongsToRelationship extends Relationship {
     this.internalModel.notifyBelongsToChanged(this.key);
   }
 
-  removeCanonicalRecordFromOwn(record) {
-    if (this.canonicalState !== record) {
+  removeCanonicalRecord(internalModel) {
+    if (this.canonicalState === internalModel) {
+      this.removeCanonicalRecordFromOwn(internalModel);
+
+      if (this.inverseKey) {
+        this.removeCanonicalRecordFromInverse(internalModel);
+      } else {
+        if (internalModel._implicitRelationships[this.inverseKeyForImplicit]) {
+          internalModel._implicitRelationships[this.inverseKeyForImplicit].removeCanonicalRecord(this.internalModel);
+        }
+      }
+    }
+
+    this.flushCanonicalLater();
+  }
+
+  removeCanonicalRecordFromOwn(internalModel) {
+    if (this.canonicalState !== internalModel) {
       // assert('Cannot remove canonical record from this belongs-to relationship, the record is not the canonicalState!', false);
       return;
     }
     this.canonicalState = null;
 
-    this.canonicalMembers.delete(record);
     this.flushCanonicalLater();
   }
 
@@ -172,12 +187,13 @@ export default class BelongsToRelationship extends Relationship {
   }
 
   fetchLink() {
-    return this.store.findBelongsTo(this.internalModel, this.link, this.relationshipMeta).then((record) => {
-      if (record) {
-        this.addRecord(record);
-      }
-      return record;
-    });
+    return this.store.findBelongsTo(this.internalModel, this.link, this.relationshipMeta)
+      .then((internalModel) => {
+        if (internalModel) {
+          this.addRecord(internalModel);
+        }
+        return internalModel;
+      });
   }
 
   getRecord() {
@@ -226,5 +242,40 @@ export default class BelongsToRelationship extends Relationship {
   updateData(data) {
     let internalModel = this.store._pushResourceIdentifier(this, data);
     this.setCanonicalRecord(internalModel);
+  }
+
+  clear() {
+    if (this.currentState) {
+      this.removeRecord(this.currentState);
+    }
+
+    if (this.canonicalState) {
+      this.removeCanonicalRecord(this.canonicalState);
+    }
+  }
+
+  destroy() {
+    if (!this.inverseKey) { return; }
+
+    if (this.currentState) {
+      let relationship = this.currentState._relationships.get(this.inverseKey);
+      // TODO: there is always a relationship in this case; this guard exists
+      // because there are tests that fail in teardown after putting things in
+      // invalid state
+      if (relationship) {
+        relationship.inverseDidDematerialize();
+      }
+    }
+
+    if (this.canonicalState && this.canonicalState !== this.currentState) {
+      let relationship = this.canonicalState._relationships.get(this.inverseKey);
+      // TODO: there is always a relationship in this case; this guard exists
+      // because there are tests that fail in teardown after putting things in
+      // invalid state
+      // TODO: can we remove this with the decomplection?
+      if (relationship) {
+        relationship.inverseDidDematerialize();
+      }
+    }
   }
 }
