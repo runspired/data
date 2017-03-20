@@ -2831,7 +2831,7 @@ test("deleted records should stay deleted", function(assert) {
   });
 
   run(function() {
-    message.destroyRecord()
+    message.destroyRecord();
   });
 
   run(function() {
