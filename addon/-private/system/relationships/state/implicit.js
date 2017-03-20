@@ -44,15 +44,6 @@ export default class ImplicitRelationship extends Relationship {
     this.canonicalMembers = new OrderedSet();
   }
 
-  // TODO @runspired deprecate this as it was never truly a record instance
-  get record() {
-    return this.internalModel;
-  }
-
-  get parentType() {
-    return this.internalModel.modelName;
-  }
-
   destroy() {
     if (!this.inverseKey) { return; }
 
@@ -92,7 +83,7 @@ export default class ImplicitRelationship extends Relationship {
 
   removeInternalModels(internalModels) {
     heimdall.increment(removeInternalModels);
-    internalModels.forEach((intenralModel) => this.removeRecord(intenralModel));
+    internalModels.forEach((internalModel) => this.removeRecord(internalModel));
   }
 
   addInternalModels(internalModels, idx) {
@@ -116,18 +107,10 @@ export default class ImplicitRelationship extends Relationship {
     }
   }
 
-  addCanonicalRecord(record, idx) {
+  addCanonicalRecord(record) {
     heimdall.increment(addCanonicalRecord);
     if (!this.canonicalMembers.has(record)) {
       this.canonicalMembers.add(record);
-      if (this.inverseKey) {
-        record._relationships.get(this.inverseKey).addCanonicalRecord(this.record);
-      } else {
-        if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, record, this.key,  { options: {} });
-        }
-        record._implicitRelationships[this.inverseKeyForImplicit].addCanonicalRecord(this.record);
-      }
     }
     this.flushCanonicalLater();
     this.setHasData(true);
@@ -150,10 +133,6 @@ export default class ImplicitRelationship extends Relationship {
       this.removeCanonicalRecordFromOwn(record);
       if (this.inverseKey) {
         this.removeCanonicalRecordFromInverse(record);
-      } else {
-        if (record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit].removeCanonicalRecord(this.record);
-        }
       }
     }
     this.flushCanonicalLater();
@@ -164,14 +143,6 @@ export default class ImplicitRelationship extends Relationship {
     if (!this.members.has(record)) {
       this.members.addWithIndex(record, idx);
       this.notifyRecordRelationshipAdded(record, idx);
-      if (this.inverseKey) {
-        record._relationships.get(this.inverseKey).addRecord(this.record);
-      } else {
-        if (!record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit] = new ImplicitRelationship(this.store, record, this.key,  { options: {} });
-        }
-        record._implicitRelationships[this.inverseKeyForImplicit].addRecord(this.record);
-      }
       this.internalModel.updateRecordArrays();
     }
     this.setHasData(true);
@@ -183,10 +154,6 @@ export default class ImplicitRelationship extends Relationship {
       this.removeRecordFromOwn(record);
       if (this.inverseKey) {
         this.removeRecordFromInverse(record);
-      } else {
-        if (record._implicitRelationships[this.inverseKeyForImplicit]) {
-          record._implicitRelationships[this.inverseKeyForImplicit].removeRecord(this.record);
-        }
       }
     }
   }
@@ -195,7 +162,7 @@ export default class ImplicitRelationship extends Relationship {
     heimdall.increment(removeRecordFromOwn);
     this.members.delete(record);
     this.notifyRecordRelationshipRemoved(record);
-    this.record.updateRecordArrays();
+    this.internalModel.updateRecordArrays();
   }
 
   removeCanonicalRecordFromOwn(record) {
