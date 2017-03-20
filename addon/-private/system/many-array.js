@@ -138,33 +138,6 @@ export default Ember.Object.extend(Ember.MutableArray, Ember.Evented, {
     return object.getRecord();
   },
 
-  flushCanonical() {
-    // TODO @runspired warn here that this is no longer correct to call
-  },
-
-  internalReplace(idx, amt, objects = []) {
-    this.arrayContentWillChange(idx, amt, objects.length);
-    this.relationship.replace(idx, amt, objects);
-    this.set('length', this.currentState.length);
-    this.arrayContentDidChange(idx, amt, objects.length);
-  },
-
-  //TODO(Igor) optimize
-  internalRemoveInternalModels(records) {
-    for (let i=0; i < records.length; i++) {
-      let index = this.currentState.indexOf(records[i]);
-      this.internalReplace(index, 1);
-    }
-  },
-
-  //TODO(Igor) optimize
-  internalAddInternalModels(records, idx) {
-    if (idx === undefined) {
-      idx = this.currentState.length;
-    }
-    this.internalReplace(idx, 0, records);
-  },
-
   replace(idx, amt, objects) {
     let records;
     if (amt > 0) {

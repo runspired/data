@@ -139,7 +139,10 @@ export default class ManyRelationship extends Relationship {
       return;
     }
 
-    this.manyArray.internalAddInternalModels([record], idx);
+    if (idx === undefined) {
+      idx = this.currentState.length;
+    }
+    this.internalReplace(idx, 0, [record]);
     this.notifyRecordRelationshipAdded(record, idx);
 
     if (this.inverseKey) {
@@ -234,14 +237,18 @@ export default class ManyRelationship extends Relationship {
 
     // diff to find changes
     let diff = diffArray(this.currentState, toSet);
-    let manyArray = this.manyArray;
 
     if (diff.firstChangeIndex !== null) { // it's null if no change found
-      // we found a change
-      manyArray.arrayContentWillChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
-      manyArray.set('length', toSet.length);
-      this.currentState = manyArray.currentState = toSet;
-      manyArray.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
+      if (this._manyArray) {
+        let manyArray = this._manyArray;
+        manyArray.arrayContentWillChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
+        manyArray.set('length', toSet.length);
+        this.currentState = manyArray.currentState = toSet;
+        manyArray.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
+      } else {
+        this.currentState = toSet;
+      }
+
       if (diff.addedCount > 0) {
         //notify only on additions
         //TODO only notify if unloaded
@@ -258,13 +265,24 @@ export default class ManyRelationship extends Relationship {
     this.notifyRecordRelationshipRemoved(record);
     this.internalModel.updateRecordArrays();
 
-    let manyArray = this.manyArray;
-
     if (idx !== undefined) {
       //TODO(Igor) not used currently, fix
       this.currentState.removeAt(idx);
     } else {
-      manyArray.internalRemoveInternalModels([record]);
+      let index = this.currentState.indexOf(record);
+      this.internalReplace(index, 1);
+    }
+  }
+
+  internalReplace(idx, amt, objects = []) {
+    if (this._manyArray) {
+      let manyArray = this._manyArray;
+      manyArray.arrayContentWillChange(idx, amt, objects.length);
+      this.currentState.splice(idx, amt, ...objects);
+      manyArray.set('length', this.currentState.length);
+      manyArray.arrayContentDidChange(idx, amt, objects.length);
+    } else {
+      this.currentState.splice(idx, amt, ...objects);
     }
   }
 
@@ -275,6 +293,7 @@ export default class ManyRelationship extends Relationship {
   }
 
   reload() {
+    // TODO should we greedily grab manyArray here?
     let manyArray = this.manyArray;
     let manyArrayLoadedState = manyArray.get('isLoaded');
 
@@ -380,10 +399,6 @@ export default class ManyRelationship extends Relationship {
   updateData(data) {
     let internalModels = this.store._pushResourceIdentifiers(this, data);
     this.updateRecordsFromAdapter(internalModels);
-  }
-
-  replace(idx, amt, objects) {
-    this.currentState.splice(idx, amt, ...objects);
   }
 
   updateRecordsFromAdapter(records) {
