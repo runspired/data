@@ -1,12 +1,13 @@
 import { assert, assertPolymorphicType } from 'ember-data/-private/debug';
 import { PromiseManyArray } from '../../promise-proxies';
 import Relationship from './implicit';
-import OrderedSet from '../../ordered-set';
 import ManyArray from '../../many-array';
+import diffArray from '../../diff-array';
 
 export default class ManyRelationship extends Relationship {
   constructor(store, record, inverseKey, relationshipMeta) {
     super(store, record, inverseKey, relationshipMeta);
+    this.kind = 'has-many';
     this.isPolymorphic = relationshipMeta.options.polymorphic;
     this.relatedModelName = relationshipMeta.type;
     this._manyArray = null;
@@ -38,10 +39,11 @@ export default class ManyRelationship extends Relationship {
     if (!this._manyArray) {
       this._manyArray = ManyArray.create({
         canonicalState: this.canonicalState,
+        currentState: this.currentState,
         store: this.store,
         relationship: this,
         type: this.store.modelFor(this.relatedModelName),
-        record: this.record,
+        record: this.internalModel,
         meta: this.meta,
         isPolymorphic: this.isPolymorphic
       });
@@ -94,9 +96,9 @@ export default class ManyRelationship extends Relationship {
       return;
     }
 
+    this.manyArray.internalAddInternalModels([record], idx);
     super.addRecord(record, idx);
     // make lazy later
-    this.manyArray.internalAddInternalModels([record], idx);
   }
 
   removeCanonicalRecordFromOwn(record, idx) {
@@ -115,9 +117,35 @@ export default class ManyRelationship extends Relationship {
   }
 
   flushCanonical() {
-    if (this._manyArray) {
-      this._manyArray.flushCanonical();
+    let toSet = this.canonicalState;
+
+    //a hack for not removing new records
+    //TODO remove once we have proper diffing
+    let newInternalModels = this.currentState.filter(
+      // only add new records which are not yet in the canonical state of this
+      // relationship (a new record can be in the canonical state if it has
+      // been 'acknowleged' to be in the relationship via a store.push)
+      (internalModel) => internalModel.isNew() && toSet.indexOf(internalModel) === -1
+    );
+    toSet = toSet.concat(newInternalModels);
+
+    // diff to find changes
+    let diff = diffArray(this.currentState, toSet);
+    let manyArray = this.manyArray;
+
+    if (diff.firstChangeIndex !== null) { // it's null if no change found
+      // we found a change
+      manyArray.arrayContentWillChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
+      manyArray.set('length', toSet.length);
+      this.currentState = manyArray.currentState = toSet;
+      manyArray.arrayContentDidChange(diff.firstChangeIndex, diff.removedCount, diff.addedCount);
+      if (diff.addedCount > 0) {
+        //notify only on additions
+        //TODO only notify if unloaded
+        this.notifyHasManyChanged();
+      }
     }
+
     super.flushCanonical();
   }
 
@@ -130,16 +158,16 @@ export default class ManyRelationship extends Relationship {
     let manyArray = this.manyArray;
     if (idx !== undefined) {
       //TODO(Igor) not used currently, fix
-      manyArray.currentState.removeAt(idx);
+      this.currentState.removeAt(idx);
     } else {
       manyArray.internalRemoveInternalModels([record]);
     }
   }
 
   notifyRecordRelationshipAdded(record, idx) {
-    assertPolymorphicType(this.record, this.relationshipMeta, record);
+    assertPolymorphicType(this.internalModel, this.relationshipMeta, record);
 
-    this.record.notifyHasManyAdded(this.key, record, idx);
+    this.internalModel.notifyHasManyAdded(this.key, record, idx);
   }
 
   reload() {
@@ -159,7 +187,7 @@ export default class ManyRelationship extends Relationship {
     if (this.link) {
       promise = this.fetchLink();
     } else {
-      promise = this.store._scheduleFetchMany(manyArray.currentState).then(() => manyArray);
+      promise = this.store._scheduleFetchMany(this.currentState).then(() => manyArray);
     }
 
     this._updateLoadingPromise(promise);
@@ -188,7 +216,7 @@ export default class ManyRelationship extends Relationship {
   }
 
   fetchLink() {
-    return this.store.findHasMany(this.record, this.link, this.relationshipMeta).then(records => {
+    return this.store.findHasMany(this.internalModel, this.link, this.relationshipMeta).then(records => {
       if (records.hasOwnProperty('meta')) {
         this.updateMeta(records.meta);
       }
@@ -202,7 +230,7 @@ export default class ManyRelationship extends Relationship {
 
   findRecords() {
     let manyArray = this.manyArray;
-    let internalModels = manyArray.currentState;
+    let internalModels = this.currentState;
 
     //TODO CLEANUP
     return this.store.findMany(internalModels).then(() => {
@@ -215,7 +243,7 @@ export default class ManyRelationship extends Relationship {
   }
 
   notifyHasManyChanged() {
-    this.record.notifyHasManyAdded(this.key);
+    this.internalModel.notifyHasManyAdded(this.key);
   }
 
   getRecords() {
@@ -234,7 +262,7 @@ export default class ManyRelationship extends Relationship {
       }
       return this._updateLoadingPromise(promise, manyArray);
     } else {
-      assert(`You looked up the '${this.key}' relationship on a '${this.record.type.modelName}' with id ${this.record.id} but some of the associated records were not loaded. Either make sure they are all loaded together with the parent record, or specify that the relationship is async ('DS.hasMany({ async: true })')`, manyArray.isEvery('isEmpty', false));
+      assert(`You looked up the '${this.key}' relationship on a '${this.internalModel.type.modelName}' with id ${this.internalModel.id} but some of the associated records were not loaded. Either make sure they are all loaded together with the parent record, or specify that the relationship is async ('DS.hasMany({ async: true })')`, manyArray.isEvery('isEmpty', false));
 
       //TODO(Igor) WTF DO I DO HERE?
       // TODO @runspired equal WTFs to Igor
@@ -249,16 +277,8 @@ export default class ManyRelationship extends Relationship {
     let internalModels = this.store._pushResourceIdentifiers(this, data);
     this.updateRecordsFromAdapter(internalModels);
   }
-}
 
-function setForArray(array) {
-  var set = new OrderedSet();
-
-  if (array) {
-    for (var i=0, l=array.length; i<l; i++) {
-      set.add(array[i]);
-    }
+  replace(idx, amt, objects) {
+    this.currentState.splice(idx, amt, ...objects);
   }
-
-  return set;
 }
