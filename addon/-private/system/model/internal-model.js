@@ -31,6 +31,28 @@ const {
 
 const assign = Ember.assign || Ember.merge;
 
+class UniqueArray {
+  constructor(key) {
+    this.key = key;
+    this.seen = Object.create(null);
+    this.items = [];
+  }
+
+  push(...additions) {
+    let seen = this.seen;
+    let items = this.items;
+    let key = this.key;
+
+    for (let i = 0; i < additions.length; i++) {
+      let value = additions[i];
+      if (value && !seen[value[key]]) {
+        seen[value[key]] = true;
+        items.push(value);
+      }
+    }
+  }
+}
+
 /*
   The TransitionChainMap caches the `state.enters`, `state.setups`, and final state reached
   when transitioning from one state to another, so that future transitions can replay the
@@ -426,17 +448,30 @@ export default class InternalModel {
     to or has many.
   */
   _directlyRelatedInternalModels() {
-    let array = [];
-    this.type.eachRelationship((key, relationship) => {
+    let array = new UniqueArray('_internalId');
+    this.modelClass.eachRelationship((key) => {
       if (this._relationships.has(key)) {
         let relationship = this._relationships.get(key);
-        let localRelationships = relationship.members.toArray();
-        let serverRelationships = relationship.canonicalMembers.toArray();
+        let additions;
 
-        array = array.concat(localRelationships, serverRelationships);
+        switch (relationship.kind) {
+          case 'belongs-to':
+            array.push(relationship.currentState, relationship.canonicalState);
+            return;
+          case 'has-many':
+            additions = [].concat(relationship.currentState, relationship.canonicalState);
+            array.push(...additions);
+            return;
+          case 'implicit':
+          default:
+            additions = [].concat(relationship.members.toArray(), relationship.canonicalMembers.toArray());
+            array.push(...additions);
+            return;
+        }
       }
     });
-    return array;
+
+    return array.items;
   }
 
 
