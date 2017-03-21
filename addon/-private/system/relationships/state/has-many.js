@@ -177,18 +177,13 @@ export default class ManyRelationship extends Relationship {
     }
   }
 
-  // TODO now that state is kept in a nice array we can do this via a single splice
-  removeCanonicalRecords(records, idx) {
-    for (let i=0; i<records.length; i++) {
-      if (idx !== undefined) {
-        this.removeCanonicalRecord(records[i], i+idx);
-      } else {
-        this.removeCanonicalRecord(records[i]);
-      }
+  removeCanonicalRecords(records) {
+    for (let i = 0; i < records.length; i++) {
+      this.removeCanonicalRecord(records[i]);
     }
   }
 
-  removeCanonicalRecord(internalModel, idx) {
+  removeCanonicalRecord(internalModel) {
     if (this.canonicalState.indexOf(internalModel) === -1) {
       return;
     }
@@ -329,12 +324,16 @@ export default class ManyRelationship extends Relationship {
       }
     }
 
-    this.removeCanonicalRecords(recordsToRemove);
+    if (recordsToRemove.length) {
+      this.removeCanonicalRecords(recordsToRemove);
+    }
 
     for (let i = 0, l = records.length; i < l; i++) {
       let record = records[i];
-      this.removeCanonicalRecord(record);
-      this.addCanonicalRecord(record, i);
+      if (state[i] !== record) {
+        this.removeCanonicalRecord(record);
+        this.addCanonicalRecord(record, i);
+      }
     }
   }
 
