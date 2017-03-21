@@ -29,7 +29,7 @@ import {
 import { normalizeResponseHelper } from "./store/serializer-response";
 import { serializerForAdapter } from "./store/serializers";
 import RelationshipPayloadsManager from './relationships/relationship-payloads-manager';
-import { relationshipIsAsync, relationshipIsPolymorphic } from './relationships/state/relationship';
+import { relationshipIsAsync } from './relationships/state/relationship';
 
 import {
   _find,
@@ -2425,6 +2425,9 @@ Store = Service.extend({
     let modelNames = Object.keys(pushed);
     let store = this;
 
+    this._hasPushedInternalModels = false;
+    this._pushedInternalModels = Object.create(null);
+
     // Cache the inverse maps for each modelClass that we visit during this
     // payload push.  In the common case where we are pushing many more
     // instances than types we want to minimize the cost of looking up the
@@ -2486,8 +2489,6 @@ Store = Service.extend({
         }
       }
     }
-
-    this._pushedInternalModels = Object.create(null);
     heimdall.stop(setupToken);
   },
 

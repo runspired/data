@@ -1,6 +1,7 @@
 /* global heimdall */
 import OrderedSet from '../../ordered-set';
 import Relationship from './relationship';
+import UniqueArray from '../../unique-array';
 
 const {
   addCanonicalRecord,
@@ -15,8 +16,7 @@ const {
   removeCanonicalRecords,
   removeRecord,
   removeRecordFromOwn,
-  removeInternalModels,
-  updateRecordsFromAdapter
+  removeInternalModels
 } = heimdall.registerMonitor('system.relationships.state.relationship',
   'addCanonicalRecord',
   'addCanonicalRecords',
@@ -30,8 +30,7 @@ const {
   'removeCanonicalRecords',
   'removeRecord',
   'removeRecordFromOwn',
-  'removeInternalModels',
-  'updateRecordsFromAdapter'
+  'removeInternalModels'
 );
 
 export default class ImplicitRelationship extends Relationship {
@@ -47,20 +46,21 @@ export default class ImplicitRelationship extends Relationship {
   destroy() {
     if (!this.inverseKey) { return; }
 
-    let allMembers =
-      // we actually want a union of members and canonicalMembers
-      // they should be disjoint but currently are not due to a bug
-      this.members.toArray().concat(this.canonicalMembers.toArray());
+    let uniqueArray = new UniqueArray('_internalId');
+    uniqueArray.push(...this.members.list);
+    uniqueArray.push(...this.canonicalMembers.list);
 
-    allMembers.forEach(inverseInternalModel => {
-      let relationship = inverseInternalModel._relationships.get(this.inverseKey);
+    let items = uniqueArray.items;
+
+    for (let i = 0; i < items.length; i++) {
+      let relationship = items[i]._relationships.get(this.inverseKey);
       // TODO: there is always a relationship in this case; this guard exists
       // because there are tests that fail in teardown after putting things in
       // invalid state
       if (relationship) {
         relationship.inverseDidDematerialize();
       }
-    });
+    }
   }
 
   inverseDidDematerialize() {}
@@ -82,7 +82,9 @@ export default class ImplicitRelationship extends Relationship {
 
   removeInternalModels(internalModels) {
     heimdall.increment(removeInternalModels);
-    internalModels.forEach((internalModel) => this.removeRecord(internalModel));
+    for (let i = 0; i < internalModels.length; i++) {
+      this.removeRecord(internalModels[i]);
+    }
   }
 
   addInternalModels(internalModels, idx) {
@@ -188,12 +190,5 @@ export default class ImplicitRelationship extends Relationship {
     for (let i = 0; i < newRecords.length; i++) {
       this.members.add(newRecords[i]);
     }
-  }
-
-  updateRecordsFromAdapter(records) {
-    heimdall.increment(updateRecordsFromAdapter);
-    //TODO(Igor) move this to a proper place
-    //TODO Once we have adapter support, we need to handle updated and canonical changes
-    this.computeChanges(records);
   }
 }

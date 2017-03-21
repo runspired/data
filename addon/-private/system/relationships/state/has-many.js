@@ -92,10 +92,10 @@ export default class ManyRelationship extends Relationship {
     }
   }
 
-  setupInverseRelationship(internalModel) {
+  setupInverseRelationship(internalModel, isInitial = false) {
     if (this.inverseKey) {
       let relationships = internalModel._relationships;
-      let relationshipExisted = relationships.has(this.inverseKey);
+      let relationshipExisted = !isInitial || relationships.has(this.inverseKey);
       let relationship = relationships.get(this.inverseKey);
       if (relationshipExisted || this.isPolymorphic) {
         // if we have only just initialized the inverse relationship, then it
@@ -142,12 +142,12 @@ export default class ManyRelationship extends Relationship {
   }
 
   addInternalModels(internalModels, idx) {
-    internalModels.forEach(internalModel => {
-      this.addRecord(internalModel, idx);
+    for (let i = 0; i < internalModels.length; i++) {
+      this.addRecord(internalModels[i], idx);
       if (idx !== undefined) {
         idx++;
       }
-    });
+    }
   }
 
   addRecord(record, idx) {
@@ -175,7 +175,9 @@ export default class ManyRelationship extends Relationship {
   }
 
   removeInternalModels(internalModels) {
-    internalModels.forEach((internalModel) => this.removeRecord(internalModel));
+    for (let i = 0; i < internalModels.length; i++) {
+      this.removeRecord(internalModels[i]);
+    }
   }
 
   removeRecord(internalModel) {
@@ -328,7 +330,7 @@ export default class ManyRelationship extends Relationship {
     return this._loadingPromise;
   }
 
-  computeChanges(records) {
+  updateRecordsFromAdapter(records) {
     let state = this.canonicalState;
     let recordsToRemove = [];
 
@@ -351,6 +353,8 @@ export default class ManyRelationship extends Relationship {
         this.addCanonicalRecord(record, i);
       }
     }
+
+    this.flushCanonicalLater();
   }
 
   setInitialInternalModels(internalModels) {
@@ -358,11 +362,8 @@ export default class ManyRelationship extends Relationship {
     this.currentState.push(...internalModels);
 
     for (let i = 0; i < internalModels.length; i++) {
-      this.setupInverseRelationship(internalModels[i]);
+      this.setupInverseRelationship(internalModels[i], true);
     }
-
-    // this.flushCanonicalLater();
-    // this.setHasData(true);
   }
 
   fetchLink() {
@@ -430,12 +431,6 @@ export default class ManyRelationship extends Relationship {
     } else {
       this.updateRecordsFromAdapter(internalModels);
     }
-  }
-
-  updateRecordsFromAdapter(records) {
-    //TODO(Igor) move this to a proper place
-    //TODO Once we have adapter support, we need to handle updated and canonical changes
-    this.computeChanges(records);
   }
 
   clear() {

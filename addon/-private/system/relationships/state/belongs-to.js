@@ -49,16 +49,16 @@ export default class BelongsToRelationship extends Relationship {
     // notifying our internalModel that we've "changed" and excessive thrash on
     // setting up inverse relationships
     this.currentState = this.canonicalState = internalModel;
-    this.setupInverseRelationship(internalModel);
+    this.setupInverseRelationship(internalModel, true);
 
     // this.flushCanonicalLater();
     // this.setHasData(true);
   }
 
-  setupInverseRelationship(internalModel) {
+  setupInverseRelationship(internalModel, isInitial = false) {
     if (this.inverseKey) {
       let relationships = internalModel._relationships;
-      let relationshipExisted = relationships.has(this.inverseKey);
+      let relationshipExisted = !isInitial || relationships.has(this.inverseKey);
       let relationship = relationships.get(this.inverseKey);
       if (relationshipExisted || this.isPolymorphic) {
         // if we have only just initialized the inverse relationship, then it

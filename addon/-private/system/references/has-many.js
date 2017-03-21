@@ -297,7 +297,7 @@ HasManyReference.prototype.push = function(objectOrPromise) {
       });
     }
 
-    this.hasManyRelationship.computeChanges(internalModels);
+    this.hasManyRelationship.updateRecordsFromAdapter(internalModels);
 
     return this.hasManyRelationship.manyArray;
   });

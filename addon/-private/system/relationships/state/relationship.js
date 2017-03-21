@@ -10,9 +10,7 @@ export function relationshipIsAsync(meta) {
 }
 
 export function relationshipIsPolymorphic(meta) {
-  let value = meta.options.polymorphic;
-
-  return typeof value === 'undefined' ? true : value;
+  return meta.options.polymorphic || false;
 }
 
 export default class Relationship {
