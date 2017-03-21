@@ -232,7 +232,9 @@ Store = Service.extend({
     // used for coalescing relationship updates
     this._updatedRelationships = [];
     // used for coalescing relationship setup needs
-    this._pushedInternalModels = [];
+    this._hasPushedInternalModels = false;
+    this._pushedInternalModels = Object.create(null);
+
     // used for coalescing internal model updates
     this._updatedInternalModels = [];
 
@@ -2396,28 +2398,50 @@ Store = Service.extend({
       return;
     }
 
-    if (this._pushedInternalModels.push(internalModel, data) !== 2) {
-      return;
-    }
+    let hash = this._pushedInternalModels;
+    let queue = hash[internalModel.modelName] = hash[internalModel.modelName] || [];
+    queue.push(internalModel, data);
 
-    this._backburner.schedule('normalizeRelationships', this, this._setupRelationships);
+    if (!this._hasPushedInternalModels) {
+      this._hasPushedInternalModels = true;
+      this._backburner.schedule('normalizeRelationships', this, this._setupRelationships);
+    }
   },
 
   _setupRelationships() {
     heimdall.increment(_setupRelationships);
     let setupToken = heimdall.start('store._setupRelationships');
     let pushed = this._pushedInternalModels;
+    let modelNames = Object.keys(pushed);
 
-    for (let i = 0, l = pushed.length; i < l; i += 2) {
+    for (let i = 0; i < modelNames.length; i ++) {
+      let queue = pushed[modelNames[i]];
+      let modelClass = queue[0].modelClass;
+      let relationshipNames = get(modelClass, 'relationshipsByName')._keys.list;
+
       // This will convert relationships specified as IDs into DS.Model instances
       // (possibly unloaded) and also create the data structures used to track
       // relationships.
-      let internalModel = pushed[i];
-      let data = pushed[i + 1];
-      setupRelationships(this, internalModel, data);
+      for (let j = 0; j < queue.length; j += 2) {
+        let internalModel = queue[i];
+        let data = queue[i + 1];
+
+        if (!data.relationships) {
+          continue;
+        }
+
+        for (let keyIndex = 0; keyIndex < relationshipNames.length; keyIndex++) {
+          let key = relationshipNames[keyIndex];
+
+          if (data.relationships[key]) {
+            let relationship = internalModel._relationships.get(key);
+            relationship.push(data.relationships[key]);
+          }
+        }
+      }
     }
 
-    pushed.length = 0;
+    this._pushedInternalModels = Object.create(null);
     heimdall.stop(setupToken);
   },
 
@@ -2789,17 +2813,6 @@ function _commit(adapter, store, operation, snapshot) {
 
     throw error;
   }, label);
-}
-
-function setupRelationships(store, internalModel, data) {
-  internalModel.type.eachRelationship((key, descriptor) => {
-    if (!data.relationships[key]) {
-      return;
-    }
-
-    let relationship = internalModel._relationships.get(key);
-    relationship.push(data.relationships[key]);
-  });
 }
 
 export { Store };
