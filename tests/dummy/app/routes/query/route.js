@@ -24,7 +24,7 @@ export default Route.extend({
     let modelName = params.modelName;
     delete params.modelName;
 
-    let token = heimdall.start('ember-data');
+    // let token = heimdall.start('ember-data');
     return this.get('store').query(modelName, params)
       .then((records) => {
         // RecordArray lazily materializes the records
@@ -32,8 +32,8 @@ export default Route.extend({
         // otherwise we would need to consume the RecordArray in our UI
         // and clutter our benchmarks and make it harder to time.
         records.toArray();
-        heimdall.stop(token);
-        window.result = heimdall.toString();
+        //heimdall.stop(token);
+        //window.result = heimdall.toString();
 
         return records;
       });

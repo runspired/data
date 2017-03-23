@@ -25,6 +25,9 @@ module.exports = function(defaults) {
         // while ember-data strips itself, ember does not currently
         { transformer: stripClassCallCheck, position: 'after' }
       ]
+    },
+    minifyJS: {
+      enabled: false
     }
   });
 
