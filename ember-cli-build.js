@@ -1,13 +1,12 @@
 /* eslint-env node */
 var EmberAddon = require('ember-cli/lib/broccoli/ember-addon');
 var merge    = require('broccoli-merge-trees');
-var Funnel   = require('broccoli-funnel');
 var globals  = require('./lib/globals');
 var yuidoc   = require('./lib/yuidoc');
 var StripClassCallCheck = require('babel6-plugin-strip-class-callcheck');
 var path = require('path');
 
-// allow toggling of heimdall instrumentation
+// when heimdall is present, set flag to set ember to prod
 var INSTRUMENT_HEIMDALL = false;
 var args = process.argv;
 
@@ -30,14 +29,7 @@ module.exports = function(defaults) {
   });
 
   if (INSTRUMENT_HEIMDALL) {
-    console.warn('IMPORTED HEIMDALL & SET EMBER TO PRODUCTION');
-    var heimdallTree = new Funnel('node_modules/heimdalljs', {
-      destDir: 'heimdalljs'
-    });
-
-    app.trees.vendor = merge([app.trees.vendor, heimdallTree]);
-
-    app.import('vendor/heimdalljs/dist/heimdalljs.iife.js', {prepend: true});
+    console.warn('SET EMBER TO PRODUCTION');
     app.vendorFiles['ember.js'].development = path.join(app.bowerDirectory, 'ember/ember.prod.js');
   }
 

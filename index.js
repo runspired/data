@@ -4,18 +4,6 @@
 var path = require('path');
 var SilentError = require('silent-error');
 
-// allow toggling of heimdall instrumentation
-var INSTRUMENT_HEIMDALL = false;
-var args = process.argv;
-
-for (var i = 0; i < args.length; i++) {
-  if (args[i] === '--instrument') {
-    INSTRUMENT_HEIMDALL = true;
-    break;
-  }
-}
-process.env.INSTRUMENT_HEIMDALL = INSTRUMENT_HEIMDALL;
-
 function add(options, name, array) {
   var option = options[name] = options[name] || [];
   option.push.apply(option, array);

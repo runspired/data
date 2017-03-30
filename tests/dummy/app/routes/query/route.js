@@ -30,6 +30,7 @@ export default Route.extend({
     delete params.modelName;
 
     let store = this.get('store');
+    heimdall.enableTimelineScopes('*');
     let token = heimdall.start('ember-data');
     return store.query(modelName, params)
       .then((records) => {
