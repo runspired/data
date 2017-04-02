@@ -2423,8 +2423,8 @@ Store = Service.extend({
       // (possibly unloaded) and also create the data structures used to track
       // relationships.
       for (let j = 0; j < queue.length; j += 2) {
-        let internalModel = queue[i];
-        let data = queue[i + 1];
+        let internalModel = queue[j];
+        let data = queue[j + 1];
 
         if (!data.relationships) {
           continue;
