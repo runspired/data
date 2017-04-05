@@ -2414,34 +2414,38 @@ Store = Service.extend({
     let pushed = this._pushedInternalModels;
     let modelNames = Object.keys(pushed);
 
-    for (let i = 0; i < modelNames.length; i ++) {
-      let queue = pushed[modelNames[i]];
+    this._hasPushedInternalModels = false;
+    this._pushedInternalModels = Object.create(null);
+
+    for (let modelNameIndex = 0; modelNameIndex < modelNames.length; modelNameIndex ++) {
+      let queue = pushed[modelNames[modelNameIndex]];
+
+      // the first item will always be an internalModel
+      //   we can use this to grab and cache the modelClass to iterate.
       let modelClass = queue[0].modelClass;
       let relationshipNames = get(modelClass, 'relationshipsByName')._keys.list;
 
       // This will convert relationships specified as IDs into DS.Model instances
       // (possibly unloaded) and also create the data structures used to track
       // relationships.
-      for (let j = 0; j < queue.length; j += 2) {
-        let internalModel = queue[j];
-        let data = queue[j + 1];
+      for (let queueIndex = 0; queueIndex < queue.length; queueIndex += 2) {
+        let internalModel = queue[queueIndex];
+        let data = queue[queueIndex + 1];
 
-        if (!data.relationships) {
-          continue;
-        }
+        if (data.relationships) {
+          for (let keyIndex = 0; keyIndex < relationshipNames.length; keyIndex++) {
+            let relationshipName = relationshipNames[keyIndex];
+            let relationshipData = data.relationships[relationshipName];
 
-        for (let keyIndex = 0; keyIndex < relationshipNames.length; keyIndex++) {
-          let key = relationshipNames[keyIndex];
-
-          if (data.relationships[key]) {
-            let relationship = internalModel._relationships.get(key);
-            relationship.push(data.relationships[key]);
+            if (relationshipData) {
+              let relationship = internalModel._relationships.get(relationshipName);
+              relationship.push(relationshipData);
+            }
           }
         }
       }
     }
 
-    this._pushedInternalModels = Object.create(null);
     heimdall.stop(setupToken);
   },
 
