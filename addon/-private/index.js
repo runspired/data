@@ -26,6 +26,7 @@ export { default as RootState } from './system/model/states';
 export { default as global } from './global';
 export { default as isEnabled } from './features';
 export { default as InternalModel } from './system/model/internal-model';
+export { parseDate } from './ext/date';
 
 export {
   PromiseArray,
@@ -41,7 +42,6 @@ export {
 
 export { default as ManyArray } from './system/many-array';
 export { default as RecordArrayManager } from './system/record-array-manager';
-export { default as initializeStoreService } from './instance-initializers/initialize-store-service';
 export { default as Relationship } from './system/relationships/state/relationship';
 
 // Should be a different Repo ?

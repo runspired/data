@@ -43,8 +43,7 @@ import {
   AdapterPopulatedRecordArray,
   ManyArray,
   RecordArrayManager,
-  Relationship,
-  initializeStoreService
+  Relationship
 } from './-private';
 
 import {
@@ -63,6 +62,7 @@ import {
 
 import "ember-inflector";
 import setupContainer from "./setup-container";
+import initializeStoreService from './instance-initializers/initialize-store-service';
 
 import Adapter from "./adapter";
 import JSONAPIAdapter from './adapters/json-api';
