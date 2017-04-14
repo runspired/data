@@ -1,4 +1,4 @@
-import DebugAdapter from "ember-data/-private/system/debug/debug-adapter";
+import DebugAdapter from '../system/debug/debug-adapter';
 
 /*
   Configures a registry with injections on Ember applications

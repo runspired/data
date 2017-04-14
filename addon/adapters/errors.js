@@ -1,5 +1,7 @@
 import Ember from 'ember';
 import { assert } from 'ember-data/-debug';
+
+// TODO import from here because else creates circular
 import isEnabled from '../-private/features';
 
 const EmberError = Ember.Error;

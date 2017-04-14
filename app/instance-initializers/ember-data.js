@@ -1,4 +1,4 @@
-import initializeStoreService from 'ember-data/-private/instance-initializers/initialize-store-service';
+import { initializeStoreService } from 'ember-data/-private';
 
 export default {
   name: "ember-data",

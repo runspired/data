@@ -13,6 +13,7 @@ if (Ember.VERSION.match(/^1\.([0-9]|1[0-2])\./)) {
                         ". Please upgrade your version of Ember, then upgrade Ember Data.");
 }
 
+// TODO import from here because else creates circular
 import InternalModel from "./-private/system/model/internal-model";
 
 import {
@@ -29,6 +30,7 @@ import {
   Model,
   Store,
   normalizeModelName,
+  Transform,
   DateTransform,
   NumberTransform,
   StringTransform,
@@ -72,8 +74,6 @@ import JSONSerializer from './serializers/json';
 import RESTSerializer from './serializers/rest';
 
 import EmbeddedRecordsMixin from "./serializers/embedded-records-mixin";
-
-import Transform from './transform';
 import attr from './attr';
 
 DS.Store         = Store;

@@ -10,11 +10,12 @@ export { default as Snapshot } from './system/snapshot';
 
 // maybe public ?
 export { default as normalizeModelName } from './system/normalize-model-name';
-export { modelHasAttributeOrRelationshipNamedType } from './utils';
+export { getOwner, modelHasAttributeOrRelationshipNamedType } from './utils';
 export { default as coerceId } from './system/coerce-id';
 export { default as parseResponseHeaders } from './utils/parse-response-headers';
 
 // should be moved into public ?
+export { default as Transform } from './transforms/transform';
 export { default as NumberTransform } from './transforms/number';
 export { default as DateTransform } from './transforms/date';
 export { default as StringTransform } from './transforms/string';
