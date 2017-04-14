@@ -1,5 +1,6 @@
 // TODO import from here because else creates circular
 import Model from 'ember-data/model';
+// import Model from '../model/model';
 import Ember from 'ember';
 import Reference from './reference';
 

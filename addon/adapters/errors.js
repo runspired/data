@@ -3,6 +3,7 @@ import { assert } from 'ember-data/-debug';
 
 // TODO import from here because else creates circular
 import isEnabled from '../-private/features';
+// import { isEnabled } from '../-private';
 
 const EmberError = Ember.Error;
 

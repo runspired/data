@@ -19,6 +19,7 @@ import InternalModel from "./-private/system/model/internal-model";
 import {
   Snapshot,
   DebugAdapter,
+//  InternalModel,
   DS,
   BuildURLMixin,
   belongsTo,
