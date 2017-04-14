@@ -13,3 +13,4 @@ export { default as BooleanTransform } from './transforms/boolean';
 // should be private
 export { default as RootState } from './system/model/states';
 export { default as global } from './global';
+export { default as isEnabled } from './features';

@@ -1,6 +1,6 @@
 import Ember from 'ember';
 import { assert } from 'ember-data/-debug';
-import isEnabled from '../-private/features';
+import { isEnabled } from '../-private';
 
 const EmberError = Ember.Error;
 

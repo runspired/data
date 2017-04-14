@@ -9,7 +9,7 @@ import JSONSerializer from "../serializers/json";
 import normalizeModelName from "../-private/system/normalize-model-name";
 import coerceId from "../-private/system/coerce-id";
 import { modelHasAttributeOrRelationshipNamedType } from "../-private/utils";
-import isEnabled from '../-private/features';
+import { isEnabled } from '../-private';
 
 let camelize = Ember.String.camelize;
 

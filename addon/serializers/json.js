@@ -4,7 +4,7 @@ import Serializer from "../serializer";
 import coerceId from "../-private/system/coerce-id";
 import normalizeModelName from "../-private/system/normalize-model-name";
 import { modelHasAttributeOrRelationshipNamedType } from "../-private/utils";
-import isEnabled from '../-private/features';
+import { isEnabled } from '../-private';
 
 import {
   getOwner

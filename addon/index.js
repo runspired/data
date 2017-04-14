@@ -17,7 +17,6 @@ import normalizeModelName from "./-private/system/normalize-model-name";
 import Snapshot from "./-private/system/snapshot";
 import InternalModel from "./-private/system/model/internal-model";
 import DebugAdapter from './-private/system/debug/debug-adapter';
-import isEnabled from "./-private/features";
 
 import {
   PromiseArray,
@@ -28,6 +27,7 @@ import {
 import {
   DS,
   global,
+  isEnabled,
   Errors,
   RootState,
   Model,
