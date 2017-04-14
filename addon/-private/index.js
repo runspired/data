@@ -7,6 +7,19 @@ export { default as belongsTo } from './system/relationships/belongs-to';
 export { default as hasMany } from './system/relationships/has-many';
 export { default as BuildURLMixin } from './adapters/build-url-mixin';
 export { default as Snapshot } from './system/snapshot';
+export {
+  AdapterError,
+  InvalidError,
+  UnauthorizedError,
+  ForbiddenError,
+  NotFoundError,
+  ConflictError,
+  ServerError,
+  TimeoutError,
+  AbortError,
+  errorsHashToArray,
+  errorsArrayToHash
+} from './adapters/errors';
 
 // maybe public ?
 export { default as normalizeModelName } from './system/normalize-model-name';

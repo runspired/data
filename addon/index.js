@@ -13,13 +13,10 @@ if (Ember.VERSION.match(/^1\.([0-9]|1[0-2])\./)) {
                         ". Please upgrade your version of Ember, then upgrade Ember Data.");
 }
 
-// TODO import from here because else creates circular
-import InternalModel from "./-private/system/model/internal-model";
-
 import {
   Snapshot,
   DebugAdapter,
-//  InternalModel,
+  InternalModel,
   DS,
   BuildURLMixin,
   belongsTo,
@@ -44,10 +41,7 @@ import {
   AdapterPopulatedRecordArray,
   ManyArray,
   RecordArrayManager,
-  Relationship
-} from './-private';
-
-import {
+  Relationship,
   AdapterError,
   InvalidError,
   UnauthorizedError,
@@ -59,7 +53,7 @@ import {
   AbortError,
   errorsHashToArray,
   errorsArrayToHash
-} from "./adapters/errors";
+} from './-private';
 
 import "ember-inflector";
 import setupContainer from "./setup-container";
