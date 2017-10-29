@@ -43,6 +43,8 @@ module('unit/system/relationships/relationship-payloads-manager', {
 
     const Hat = Model.extend({
       type: attr('string'),
+      hat:  belongsTo('hat', {async: false, inverse: 'hats', polymorphic: true}),
+      hats: hasMany('hat', {async: false, inverse: 'hat', polymorphic: true}),
       user: belongsTo('user', { async: false, inverse: 'hats', polymorphic: true })
     });
     const BigHat = Hat.extend({});
@@ -804,6 +806,34 @@ test('push one side is polymorphic, different subtypes', function(assert) {
     expectedResults = included.map(m => m.type);
 
   assert.deepEqual(finalResult, expectedResults, 'We got all our hats!');
+});
+
+test('push one side polymorphic self-referential', function(assert) {
+  const hat1Data = {
+    data: {
+      id: 1,
+      type: 'big-hat',
+      attributes: { type: 'big-hat' }
+    }
+  };
+  const hat2Data = {
+    data: {
+      id: 2,
+      type: 'big-hat',
+      attributes: { type: 'big-hat' },
+      relationships: {
+        hats: {
+          data: [{ id: 1, type: 'big-hat' }]
+        }
+      }
+    }
+  };
+
+  const hat1 = run(() => this.store.push(hat1Data)),
+    hat2 = run(() => this.store.push(hat2Data));
+
+  assert.equal(hat1.get('hat'), null);
+  assert.deepEqual(hat2.get('hats'), [hat1]);
 });
 
 test('push both sides are polymorphic', function(assert) {
