@@ -1,7 +1,7 @@
 import EmberObject, { computed } from '@ember/object';
-import RootState from './model/states';
+
 // This is leaked from the rest/json-api adapter layer, not the min adapter API
-// import Errors from './model/errors';
+import Errors from './model/errors';
 
 const Model = EmberObject.extend({
   store: null,
@@ -17,7 +17,9 @@ const Model = EmberObject.extend({
   isError: false,
   isReloading: false,
 
-  currentState: RootState.empty,
+  // the above flags indicate the minimum subset we should
+  //   refactor the state machine to produce and support
+  currentState: computed.reads('_internalModel.currentState'),
 
   errors: computed(function() {
     return new Errors();
