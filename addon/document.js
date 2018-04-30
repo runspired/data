@@ -1,8 +1,9 @@
-import Document from './document';
+export default class Document {
+  get meta() {}
+  get links() {}
+  get data() {}
+  get errors() {}
 
-export default class Collection extends Document {
-  next() {}
-  prev() {}
-  first() {}
-  last() {}
+  // also used for reload
+  fetch(options) {}
 }
