@@ -1,68 +1,58 @@
-import Service from '@ember/service';
-import IdentityMap from './identity-map';
-import RecordArrayManager from "./record-array-manager";
+import CollectionManager from './collection-manager';
 
-export default Service.extend({
-  init() {
-    this._super(...arguments);
+export default class Store {
+  constructor() {
     // internal bookkeeping; not observable
-    this.recordArrayManager = new RecordArrayManager({ store: this });
-    this._identityMap = new IdentityMap();
-  },
+    this.collectionManager = new CollectionManager({ store: this });
 
-  createRecord(modelName, inputProperties) {},
+    this._resourceCache = new Map();
+    this._resourceDataCache = new Map();
+    this._resourceIdentifierCache = new Map();
+    this._relationshipCache = new Map();
+  }
 
-  deleteRecord(record) { record.deleteRecord(); },
-  unloadRecord(record) {record.unloadRecord(); },
-  _reloadRecord(internalModel, options) {},
+  // sync cache peek
+  getIdentifier({ type, id, meta, links }) {}
+  peekResource({ type, id }) {}
+  peekResourceData({ type, id }) {}
+  // peekAll replacement (kill RecordArray)
+  peekResourceType(type) {}
 
-  getReference(modelName, id) {},
-  peekRecord(modelName, id) {},
-  hasRecordForId(modelName, id) {},
-  recordForId(modelName, id) {},
+  _inverseRelationshipFor(modelName, member) {}
 
-  // same as findRecord but exists due to defaultStore
-  find(modelName, id, options) {},
-  findRecord(modelName, id, options) {},
-  findMany(internalModels) {},
-  findHasMany(internalModel, link, relationship) {},
-  findBelongsTo(internalModel, link, relationship) {},
+  // Operations
+  createResource() {}
+  saveResource() {}
+  deleteResource() {}
+  unloadResource() {}
+  reloadResource() {}
 
-  query(modelName, query, options) {},
-  queryRecord(modelName, query, options) {},
+  // fuzzy, basically setRecordId / _commit of today
+  //  but only for updating cache state not for pushing the
+  //  mutations / transitioning the model
+  resourceDidSave() {}
 
-  findAll(modelName, options) {},
+  // macro for "adapter.fetchDocument => store.pushDocument"
+  //  all older find requests could be re-implemented using this
+  fetchDocument(query, options) {}
 
-  peekAll(modelName) {},
-  unloadAll(modelName) {},
+  // async store.push and store._push store.pushPayload replacement
+  pushDocument(document) {}
 
-  scheduleSave(internalModel, resolver, options) {},
-  didSaveRecord(internalModel, dataArg) {},
-  recordWasInvalid(internalModel, errors) {},
-  recordWasError(internalModel, error) {},
+  // we should look at Orbit and M3's schema management for inspiration
+  //  but until then these are still rather necessary as attributes and
+  //  relationships are stored on Model class
+  //  of note: we should kill mixin support for polymorphism
+  modelFor(modelName) {}
+  // necessary due to factory v. class divide
+  _modelFactoryFor(modelName) {}
+  hasModelFor(modelName) {}
 
-  updateId(internalModel, data) {},
+  // clone the store
+  fork() {}
 
-  modelFor(modelName) {},
-
-  _modelFactoryFor(modelName) {},
-  _hasModelFor(modelName) {},
-
-  push(data) {},
-  _push(jsonApiDoc) {},
-
-  pushPayload(modelName, inputPayload) {},
-
-  normalize(modelName, payload) {},
-  recordWasLoaded(record) {},
-
-  adapterFor(modelName) {},
-
-  serializerFor(modelName) {},
-
-  willDestroy() {},
-});
-
-function getModelFactory(store, cache, normalizedModelName) {}
-function _modelForMixin(store, normalizedModelName) {}
-function setupRelationships(store, internalModel, data, modelNameToInverseMap) {}
+  // unloadAll replacement, we remove unloadAll(<type>)
+  // this is probably not even necessary, just need to dereference
+  //  this store
+  discardFork() {}
+};
